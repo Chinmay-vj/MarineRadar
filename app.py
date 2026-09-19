@@ -1,21 +1,15 @@
-import os
-from datetime import datetime, timezone
-
-import requests
 import streamlit as st
 import folium
 
-from dotenv import load_dotenv
+from datetime import datetime, timezone
+
 from streamlit_folium import st_folium
 
-
-# ============================================================
-# LOAD API KEY
-# ============================================================
-
-load_dotenv()
-
-API_KEY = os.getenv("PELYR_API_KEY")
+from database import (
+    initialize_database,
+    get_current_vessels,
+    get_vessel_histories
+)
 
 
 # ============================================================
@@ -30,106 +24,44 @@ st.set_page_config(
 
 
 # ============================================================
-# CHECK API KEY
+# DATABASE INITIALIZATION
 # ============================================================
 
-if not API_KEY:
-    st.error("PELYR_API_KEY not found in .env file.")
-    st.stop()
+initialize_database()
 
 
 # ============================================================
-# STORE SHIP POSITION HISTORY
+# APPLICATION CONFIGURATION
 # ============================================================
 
-if "ship_history" not in st.session_state:
-    st.session_state.ship_history = {}
+# Number of vessels rendered on the map.
+#
+# The database contains thousands of vessels, but rendering
+# tens of thousands of Folium markers would make the browser
+# extremely slow.
+#
+# This is ONLY a display limit.
+# All AIS data remains stored in SQLite.
+
+MAX_MAP_VESSELS = 100
 
 
-# ============================================================
-# GET AIS DATA
-# ============================================================
+# Number of historical positions used for the trail.
 
-@st.cache_data(ttl=60)
-def get_vessels():
-
-    url = "https://api.pelyr.com/v1/vessels"
-
-    params = {
-        "bbox": "-180,-85,180,85",
-        "max": 100
-    }
-
-    headers = {
-        "Authorization": f"Bearer {API_KEY}"
-    }
-
-    try:
-
-        response = requests.get(
-            url,
-            params=params,
-            headers=headers,
-            timeout=60
-        )
-
-        # ----------------------------------------------------
-        # Rate limit
-        # ----------------------------------------------------
-
-        if response.status_code == 429:
-
-            retry_after = response.headers.get(
-                "Retry-After",
-                "60"
-            )
-
-            st.warning(
-                f"AIS API rate limit reached. "
-                f"Retrying after {retry_after} seconds."
-            )
-
-            return []
-
-        # ----------------------------------------------------
-        # Other errors
-        # ----------------------------------------------------
-
-        if response.status_code != 200:
-
-            st.error(
-                f"AIS API Error: {response.status_code}"
-            )
-
-            st.code(response.text)
-
-            return []
-
-        # ----------------------------------------------------
-        # Successful response
-        # ----------------------------------------------------
-
-        data = response.json()
-
-        return data.get("vessels", [])
-
-    except requests.exceptions.RequestException as e:
-
-        st.error(
-            f"Connection error: {e}"
-        )
-
-        return []
+TRAIL_LENGTH = 20
 
 
 # ============================================================
 # HEADER
 # ============================================================
 
-st.title("🌍 Global Ship Tracker")
+st.title(
+    "🌍 Global Ship Tracker"
+)
 
 st.write(
-    "Near-real-time maritime traffic visualization using AIS data"
+    "Near-real-time maritime traffic visualization "
+    "using persistent AIS data"
 )
 
 
@@ -137,55 +69,93 @@ st.write(
 # LIVE MAP
 # ============================================================
 
-@st.fragment(run_every="60s")
+@st.fragment(run_every="5s")
 def live_map():
 
-    # --------------------------------------------------------
-    # Get latest AIS positions
-    # --------------------------------------------------------
+    # ========================================================
+    # READ CURRENT VESSELS FROM SQLITE
+    # ========================================================
 
-    ships = get_vessels()
+    ships = get_current_vessels(
+        limit=MAX_MAP_VESSELS
+    )
 
 
-    # --------------------------------------------------------
-    # Current update time
-    # --------------------------------------------------------
+    # ========================================================
+    # GET MMSIs
+    # ========================================================
+
+    mmsis = [
+
+        ship["mmsi"]
+
+        for ship in ships
+
+        if ship.get("mmsi")
+
+    ]
+
+
+    # ========================================================
+    # READ HISTORICAL POSITIONS
+    #
+    # One batch database operation instead of one query
+    # per vessel.
+    # ========================================================
+
+    histories = get_vessel_histories(
+
+        mmsis,
+
+        limit=TRAIL_LENGTH
+
+    )
+
+
+    # ========================================================
+    # CURRENT UPDATE TIME
+    # ========================================================
 
     update_time = datetime.now(
         timezone.utc
-    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+    ).strftime(
+        "%Y-%m-%d %H:%M:%S UTC"
+    )
 
 
-    # --------------------------------------------------------
-    # Statistics
-    # --------------------------------------------------------
+    # ========================================================
+    # STATISTICS
+    # ========================================================
 
     col1, col2, col3 = st.columns(3)
+
 
     with col1:
 
         st.metric(
-            "🚢 Vessels",
+            "🚢 Displayed vessels",
             len(ships)
         )
+
 
     with col2:
 
         st.metric(
-            "🔄 Update",
-            "60 sec"
+            "🔄 Map refresh",
+            "5 sec"
         )
+
 
     with col3:
 
         st.metric(
-            "📍 Tracked ships",
-            len(st.session_state.ship_history)
+            "💾 Data source",
+            "SQLite"
         )
 
 
     st.caption(
-        f"Last AIS request: {update_time}"
+        f"Last database refresh: {update_time}"
     )
 
 
@@ -194,9 +164,16 @@ def live_map():
     # ========================================================
 
     m = folium.Map(
-        location=[20, 0],
+
+        location=[
+            20,
+            0
+        ],
+
         zoom_start=2,
+
         tiles="OpenStreetMap"
+
     )
 
 
@@ -207,87 +184,109 @@ def live_map():
     for ship in ships:
 
         # ----------------------------------------------------
-        # Position and static information
+        # MMSI
         # ----------------------------------------------------
 
-        position = ship.get("position", {})
-        static = ship.get("static", {})
-
-        latitude = position.get("lat")
-        longitude = position.get("lon")
-
-
-        # Ignore ships without coordinates
-
-        if latitude is None or longitude is None:
-            continue
-
-
-        # ----------------------------------------------------
-        # Ship identification
-        # ----------------------------------------------------
-
-        mmsi = ship.get("mmsi")
-
-        if not mmsi:
-            continue
-
-        mmsi = str(mmsi)
-
-
-        # ----------------------------------------------------
-        # Ship information
-        # ----------------------------------------------------
-
-        name = (
-            static.get("name")
-            or "Unknown vessel"
+        mmsi = ship.get(
+            "mmsi"
         )
 
+
+        if not mmsi:
+
+            continue
+
+
+        mmsi = str(
+            mmsi
+        )
+
+
+        # ----------------------------------------------------
+        # CURRENT POSITION
+        # ----------------------------------------------------
+
+        latitude = ship.get(
+            "latitude"
+        )
+
+        longitude = ship.get(
+            "longitude"
+        )
+
+
+        if (
+            latitude is None
+            or
+            longitude is None
+        ):
+
+            continue
+
+
+        # ----------------------------------------------------
+        # CURRENT AIS DATA
+        # ----------------------------------------------------
+
+        speed = ship.get(
+            "sog"
+        )
+
+        course = ship.get(
+            "cog"
+        )
+
+        heading = ship.get(
+            "heading"
+        )
+
+        timestamp = ship.get(
+            "last_seen"
+        )
+
+
+        # ----------------------------------------------------
+        # STATIC INFORMATION
+        #
+        # Not yet available in the current position database.
+        # We deliberately don't invent these values.
+        # ----------------------------------------------------
+
+        name = "Unknown vessel"
+
         vessel_type = (
-            static.get("type")
-            or "Unknown"
+            "Not available"
         )
 
         imo = (
-            static.get("imo")
-            or "Unknown"
+            "Not available"
         )
-
-        speed = position.get("sog")
-
-        course = position.get("cog")
-
-        heading = position.get("heading")
 
         destination = (
-            static.get("dest")
-            or "Unknown"
-        )
-
-        timestamp = (
-            position.get("ts")
-            or "Unknown"
+            "Not available"
         )
 
 
         # ====================================================
-        # SHIP HISTORY
+        # VESSEL HISTORY
         # ====================================================
 
-        history = st.session_state.ship_history.get(
+        history = histories.get(
             mmsi,
             []
         )
 
 
         # ----------------------------------------------------
-        # Get previous position BEFORE adding current position
+        # Previous position
+        #
+        # The last history point may be the current position.
+        # Therefore we use the second-last point when available.
         # ----------------------------------------------------
 
-        if len(history) > 0:
+        if len(history) >= 2:
 
-            previous = history[-1]
+            previous = history[-2]
 
         else:
 
@@ -295,54 +294,10 @@ def live_map():
 
 
         # ====================================================
-        # ADD CURRENT POSITION ONLY IF IT IS NEW
-        # ====================================================
-
-        new_position = {
-            "lat": latitude,
-            "lon": longitude,
-            "timestamp": timestamp
-        }
-
-
-        # ----------------------------------------------------
-        # Prevent duplicate AIS positions
-        # ----------------------------------------------------
-
-        if not history or (
-
-            history[-1]["lat"] != latitude
-
-            or history[-1]["lon"] != longitude
-
-            or history[-1]["timestamp"] != timestamp
-
-        ):
-
-            history.append(new_position)
-
-
-        # ----------------------------------------------------
-        # Keep only latest 20 positions
-        # ----------------------------------------------------
-
-        history = history[-20:]
-
-
-        # ----------------------------------------------------
-        # Save updated history
-        # ----------------------------------------------------
-
-        st.session_state.ship_history[mmsi] = history
-
-
-        # ====================================================
-        # STEP 4C - DRAW COMPLETE MOVEMENT TRAIL
+        # DRAW MOVEMENT TRAIL
         # ====================================================
 
         if len(history) >= 2:
-
-            # Create coordinates for complete trail
 
             trail_coordinates = [
 
@@ -356,10 +311,6 @@ def live_map():
             ]
 
 
-            # ------------------------------------------------
-            # Draw complete movement trail
-            # ------------------------------------------------
-
             folium.PolyLine(
 
                 locations=trail_coordinates,
@@ -370,13 +321,15 @@ def live_map():
 
                 opacity=0.8,
 
-                tooltip=f"{name} movement trail"
+                tooltip=(
+                    f"{name} movement trail"
+                )
 
             ).add_to(m)
 
 
             # ------------------------------------------------
-            # Mark previous positions
+            # Previous positions
             # ------------------------------------------------
 
             for point in history[:-1]:
@@ -384,8 +337,10 @@ def live_map():
                 folium.CircleMarker(
 
                     location=[
+
                         point["lat"],
                         point["lon"]
+
                     ],
 
                     radius=3,
@@ -400,18 +355,24 @@ def live_map():
 
 
         # ====================================================
-        # CURRENT / LAST LOCATION
+        # LAST LOCATION
         # ====================================================
 
         if previous:
 
-            last_lat = f"{previous['lat']:.5f}"
+            last_lat = (
+                f"{previous['lat']:.5f}"
+            )
 
-            last_lon = f"{previous['lon']:.5f}"
+            last_lon = (
+                f"{previous['lon']:.5f}"
+            )
 
-            last_timestamp = previous.get(
-                "timestamp",
-                "Unknown"
+            last_timestamp = (
+                previous.get(
+                    "timestamp",
+                    "Unknown"
+                )
             )
 
         else:
@@ -424,7 +385,7 @@ def live_map():
 
 
         # ====================================================
-        # SHIP POPUP
+        # POPUP
         # ====================================================
 
         popup_html = f"""
@@ -476,14 +437,26 @@ def live_map():
             <br>
 
             <b>🚢 Speed:</b>
-            {speed if speed is not None else "N/A"}
+            {
+                speed
+                if speed is not None
+                else "N/A"
+            }
             knots<br>
 
             <b>🧭 Course:</b>
-            {course if course is not None else "N/A"}°<br>
+            {
+                course
+                if course is not None
+                else "N/A"
+            }°<br>
 
             <b>🧭 Heading:</b>
-            {heading if heading is not None else "N/A"}°
+            {
+                heading
+                if heading is not None
+                else "N/A"
+            }°
 
         </div>
         """
@@ -501,15 +474,21 @@ def live_map():
             ],
 
             popup=folium.Popup(
+
                 popup_html,
+
                 max_width=320
+
             ),
 
-            tooltip=name,
+            tooltip=mmsi,
 
             icon=folium.Icon(
+
                 icon="ship",
+
                 prefix="fa"
+
             )
 
         ).add_to(m)
@@ -520,9 +499,13 @@ def live_map():
     # ========================================================
 
     st_folium(
+
         m,
+
         width=None,
+
         height=700
+
     )
 
 

@@ -20,13 +20,19 @@ DB_PATH = DATA_DIR / "ships.db"
 def get_connection():
 
     connection = sqlite3.connect(
-        DB_PATH
+        DB_PATH,
+        timeout=10
     )
 
     connection.row_factory = sqlite3.Row
 
-    return connection
+    # Wait up to 10 seconds if another SQLite operation
+    # temporarily has the database locked.
+    connection.execute(
+        "PRAGMA busy_timeout = 10000"
+    )
 
+    return connection
 
 # ============================================================
 # INITIALIZE DATABASE
@@ -39,6 +45,18 @@ def initialize_database():
     )
 
     connection = get_connection()
+
+    # Enable Write-Ahead Logging.
+    # This allows SQLite readers and the continuous
+    # database writer to work concurrently.
+    connection.execute(
+        "PRAGMA journal_mode=WAL"
+    )
+
+    # Good balance between write performance and durability.
+    connection.execute(
+        "PRAGMA synchronous=NORMAL"
+    )
 
     cursor = connection.cursor()
 

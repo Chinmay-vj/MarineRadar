@@ -12,11 +12,20 @@
 
     <title>Global Ship Tracker</title>
 
-    <!-- Leaflet CSS -->
+
+    <!-- =====================================================
+         LEAFLET
+         ===================================================== -->
+
     <link
         rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     >
+
+
+    <!-- =====================================================
+         PAGE STYLE
+         ===================================================== -->
 
     <style>
 
@@ -32,6 +41,7 @@
             overflow: hidden;
 
         }
+
 
         #map {
 
@@ -50,7 +60,9 @@
     <div id="map"></div>
 
 
-    <!-- Leaflet JavaScript -->
+    <!-- =====================================================
+         LEAFLET JS
+         ===================================================== -->
 
     <script
         src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
@@ -60,22 +72,69 @@
     <script>
 
         // =====================================================
-        // CONFIGURATION
+        // API CONFIGURATION
         // =====================================================
 
-        const API_URL = "/api/v1/vessels?limit=100";
+        const VESSEL_API_URL =
+            "/api/v1/vessels?limit=100";
 
-        const REFRESH_INTERVAL = 5000;
+        const HISTORY_API_URL =
+            "/api/v1/vessels/history";
+
+
+        // =====================================================
+        // REFRESH CONFIGURATION
+        // =====================================================
+
+        const VESSEL_REFRESH_INTERVAL =
+            5000;
+
+        const HISTORY_REFRESH_INTERVAL =
+            10000;
+
+        const HISTORY_LIMIT =
+            20;
+
+
+        // =====================================================
+        // OBSERVED TRACK CONFIGURATION
+        // =====================================================
+
+        /*
+            11C-3:
+
+            A solid line represents only observed AIS positions.
+
+            If the database has a gap greater than 30 minutes
+            between consecutive observations, the line is
+            intentionally broken.
+
+            We do NOT:
+                - interpolate missing positions
+                - predict a route
+                - route the vessel around land
+                - connect observations across long AIS gaps
+
+            Route estimation belongs to later voyage/prediction
+            stages.
+        */
+
+        const MAX_TIME_GAP_MINUTES =
+            30;
+
+        const MIN_TRACK_POINTS =
+            2;
 
 
         // =====================================================
         // CREATE MAP
         // =====================================================
 
-        const map = L.map("map").setView(
-            [20, 0],
-            2
-        );
+        const map =
+            L.map("map").setView(
+                [20, 0],
+                2
+            );
 
 
         // =====================================================
@@ -85,18 +144,40 @@
         L.tileLayer(
             "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
             {
+
                 maxZoom: 19,
+
                 attribution:
-                    '&copy; OpenStreetMap contributors'
+                    "&copy; OpenStreetMap contributors"
+
             }
         ).addTo(map);
 
 
         // =====================================================
-        // STORE MARKERS
+        // GLOBAL DATA STORES
         // =====================================================
 
         const markers = {};
+
+        /*
+            One vessel can now have multiple observed-track
+            segments because long AIS gaps are represented as
+            breaks rather than artificial connecting lines.
+
+            trails[mmsi] = [
+                Leaflet polyline,
+                Leaflet polyline,
+                ...
+            ]
+        */
+        const trails = {};
+
+        let currentVessels = [];
+
+        let vesselUpdateRunning = false;
+
+        let historyUpdateRunning = false;
 
 
         // =====================================================
@@ -116,7 +197,8 @@
                         background: #2196F3;
                         border-radius: 50%;
                         border: 2px solid white;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+                        box-shadow:
+                            0 2px 5px rgba(0,0,0,0.4);
                         display: flex;
                         align-items: center;
                         justify-content: center;
@@ -127,9 +209,15 @@
                     </div>
                 `,
 
-                iconSize: [32, 32],
+                iconSize: [
+                    32,
+                    32
+                ],
 
-                iconAnchor: [16, 16]
+                iconAnchor: [
+                    16,
+                    16
+                ]
 
             });
 
@@ -143,17 +231,22 @@
         function createPopup(vessel) {
 
             const speed =
-                vessel.sog !== null
+                vessel.sog !== null &&
+                vessel.sog !== undefined
                     ? vessel.sog
                     : "N/A";
 
+
             const course =
-                vessel.cog !== null
+                vessel.cog !== null &&
+                vessel.cog !== undefined
                     ? vessel.cog
                     : "N/A";
 
+
             const heading =
-                vessel.heading !== null
+                vessel.heading !== null &&
+                vessel.heading !== undefined
                     ? vessel.heading
                     : "N/A";
 
@@ -170,26 +263,36 @@
 
                     <b>MMSI:</b>
                     ${vessel.mmsi}
+
                     <br><br>
 
                     <b>Latitude:</b>
-                    ${Number(vessel.latitude).toFixed(5)}
+                    ${Number(
+                        vessel.latitude
+                    ).toFixed(5)}
+
                     <br>
 
                     <b>Longitude:</b>
-                    ${Number(vessel.longitude).toFixed(5)}
+                    ${Number(
+                        vessel.longitude
+                    ).toFixed(5)}
+
                     <br>
 
                     <b>AIS Time:</b>
                     ${vessel.last_seen}
+
                     <br><br>
 
                     <b>Speed:</b>
                     ${speed} knots
+
                     <br>
 
                     <b>Course:</b>
                     ${course}°
+
                     <br>
 
                     <b>Heading:</b>
@@ -202,20 +305,450 @@
 
 
         // =====================================================
-        // UPDATE VESSELS
+        // PREPARE OBSERVED AIS TRACK
+        // =====================================================
+
+        function prepareObservedTrack(history) {
+
+            if (
+                !Array.isArray(history)
+            ) {
+
+                return [];
+
+            }
+
+
+            /*
+                Convert coordinates to numbers and remove malformed
+                AIS positions.
+            */
+
+            const points =
+                history
+                    .map(
+                        point => {
+
+                            const latitude =
+                                Number(
+                                    point.latitude ??
+                                    point.lat
+                                );
+
+                            const longitude =
+                                Number(
+                                    point.longitude ??
+                                    point.lon
+                                );
+
+                            const timestamp =
+                                point.timestamp;
+
+
+                            if (
+                                !Number.isFinite(latitude) ||
+                                !Number.isFinite(longitude) ||
+                                !timestamp
+                            ) {
+
+                                return null;
+
+                            }
+
+
+                            if (
+                                latitude < -90 ||
+                                latitude > 90 ||
+                                longitude < -180 ||
+                                longitude > 180
+                            ) {
+
+                                return null;
+
+                            }
+
+
+                            /*
+                                The ingestion layer already rejects
+                                (0,0), but keep this guard here so the
+                                map never renders it if an old/foreign
+                                record appears in the API.
+                            */
+
+                            if (
+                                Math.abs(latitude) < 1e-9 &&
+                                Math.abs(longitude) < 1e-9
+                            ) {
+
+                                return null;
+
+                            }
+
+
+                            const parsedTime =
+                                Date.parse(
+                                    timestamp
+                                );
+
+
+                            if (
+                                !Number.isFinite(
+                                    parsedTime
+                                )
+                            ) {
+
+                                return null;
+
+                            }
+
+
+                            return {
+
+                                latitude,
+
+                                longitude,
+
+                                timestamp,
+
+                                timeMs:
+                                    parsedTime
+
+                            };
+
+                        }
+                    )
+                    .filter(
+                        point => point !== null
+                    );
+
+
+            /*
+                Always sort by AIS timestamp so the observed line
+                follows chronological observation order.
+            */
+
+            points.sort(
+                (
+                    a,
+                    b
+                ) => {
+
+                    return (
+                        a.timeMs
+                        -
+                        b.timeMs
+                    );
+
+                }
+            );
+
+
+            return points;
+
+        }
+
+
+        // =====================================================
+        // SPLIT OBSERVED TRACK INTO CONTINUOUS SEGMENTS
+        // =====================================================
+
+        function splitObservedTrack(
+            points
+        ) {
+
+            const segments = [];
+
+            let currentSegment = [];
+
+
+            points.forEach(
+                point => {
+
+                    /*
+                        First point of the vessel.
+                    */
+
+                    if (
+                        currentSegment.length === 0
+                    ) {
+
+                        currentSegment.push(
+                            point
+                        );
+
+                        return;
+
+                    }
+
+
+                    const previousPoint =
+                        currentSegment[
+                            currentSegment.length - 1
+                        ];
+
+
+                    const elapsedMinutes =
+                        (
+                            point.timeMs
+                            -
+                            previousPoint.timeMs
+                        )
+                        /
+                        60000;
+
+
+                    /*
+                        If AIS disappeared for more than 30 minutes,
+                        end the observed segment.
+
+                        We do NOT draw a line across the gap.
+                    */
+
+                    if (
+                        elapsedMinutes
+                        >
+                        MAX_TIME_GAP_MINUTES
+                    ) {
+
+                        if (
+                            currentSegment.length
+                            >=
+                            MIN_TRACK_POINTS
+                        ) {
+
+                            segments.push(
+                                currentSegment
+                            );
+
+                        }
+
+
+                        currentSegment = [
+                            point
+                        ];
+
+                        return;
+
+                    }
+
+
+                    /*
+                        Continuous observation.
+                    */
+
+                    currentSegment.push(
+                        point
+                    );
+
+                }
+            );
+
+
+            /*
+                Add final segment.
+            */
+
+            if (
+                currentSegment.length
+                >=
+                MIN_TRACK_POINTS
+            ) {
+
+                segments.push(
+                    currentSegment
+                );
+
+            }
+
+
+            return segments;
+
+        }
+
+
+        // =====================================================
+        // REMOVE ONE VESSEL'S OBSERVED TRACK
+        // =====================================================
+
+        function removeVesselTrail(
+            mmsi
+        ) {
+
+            if (
+                !trails[mmsi]
+            ) {
+
+                return;
+
+            }
+
+
+            trails[mmsi].forEach(
+                trail => {
+
+                    map.removeLayer(
+                        trail
+                    );
+
+                }
+            );
+
+
+            delete trails[mmsi];
+
+        }
+
+
+        // =====================================================
+        // UPDATE ONE VESSEL'S OBSERVED TRACK
+        // =====================================================
+
+        function updateVesselTrail(
+            mmsi,
+            history
+        ) {
+
+            removeVesselTrail(
+                mmsi
+            );
+
+
+            const points =
+                prepareObservedTrack(
+                    history
+                );
+
+
+            if (
+                points.length
+                <
+                MIN_TRACK_POINTS
+            ) {
+
+                return;
+
+            }
+
+
+            const segments =
+                splitObservedTrack(
+                    points
+                );
+
+
+            if (
+                segments.length === 0
+            ) {
+
+                return;
+
+            }
+
+
+            trails[mmsi] = [];
+
+
+            segments.forEach(
+                segment => {
+
+                    const coordinates =
+                        segment.map(
+                            point => [
+                                point.latitude,
+                                point.longitude
+                            ]
+                        );
+
+
+                    /*
+                        SOLID RED = observed AIS history.
+
+                        Each segment contains only observations
+                        separated by <= 30 minutes.
+
+                        There is intentionally NO line between
+                        separate segments.
+                    */
+
+                    const trail =
+                        L.polyline(
+                            coordinates,
+                            {
+
+                                color:
+                                    "red",
+
+                                weight:
+                                    3,
+
+                                opacity:
+                                    0.85,
+
+                                smoothFactor:
+                                    1,
+
+                                lineJoin:
+                                    "round",
+
+                                lineCap:
+                                    "round"
+
+                            }
+                        ).addTo(
+                            map
+                        );
+
+
+                    trails[mmsi].push(
+                        trail
+                    );
+
+                }
+            );
+
+
+            console.log(
+                `Observed track ${mmsi}: ` +
+                `${segments.length} continuous segment(s)`
+            );
+
+        }
+
+
+        // =====================================================
+        // UPDATE VESSEL MARKERS
         // =====================================================
 
         async function updateVessels() {
 
+            if (
+                vesselUpdateRunning
+            ) {
+
+                return;
+
+            }
+
+
+            vesselUpdateRunning =
+                true;
+
+
             try {
 
                 const response =
-                    await fetch(API_URL, {
-                        cache: "no-store"
-                    });
+                    await fetch(
+                        VESSEL_API_URL,
+                        {
+                            cache:
+                                "no-store"
+                        }
+                    );
 
 
-                if (!response.ok) {
+                if (
+                    !response.ok
+                ) {
 
                     throw new Error(
                         `HTTP ${response.status}`
@@ -228,35 +761,48 @@
                     await response.json();
 
 
+                currentVessels =
+                    data.vessels ||
+                    [];
+
+
                 const activeMMSIs =
                     new Set();
 
 
-                // =============================================
-                // UPDATE EXISTING / CREATE NEW MARKERS
-                // =============================================
-
-                data.vessels.forEach(
+                currentVessels.forEach(
                     vessel => {
 
                         const mmsi =
-                            String(vessel.mmsi);
+                            String(
+                                vessel.mmsi
+                            );
 
 
-                        activeMMSIs.add(mmsi);
+                        activeMMSIs.add(
+                            mmsi
+                        );
 
 
                         const latitude =
-                            Number(vessel.latitude);
+                            Number(
+                                vessel.latitude
+                            );
 
 
                         const longitude =
-                            Number(vessel.longitude);
+                            Number(
+                                vessel.longitude
+                            );
 
 
                         if (
-                            !Number.isFinite(latitude) ||
-                            !Number.isFinite(longitude)
+                            !Number.isFinite(
+                                latitude
+                            ) ||
+                            !Number.isFinite(
+                                longitude
+                            )
                         ) {
 
                             return;
@@ -264,28 +810,61 @@
                         }
 
 
-                        // -----------------------------------------
-                        // EXISTING VESSEL
-                        // -----------------------------------------
+                        /*
+                            Extra protection against invalid current
+                            coordinates reaching the map.
+                        */
 
-                        if (markers[mmsi]) {
+                        if (
+                            latitude < -90 ||
+                            latitude > 90 ||
+                            longitude < -180 ||
+                            longitude > 180
+                        ) {
 
-                            markers[mmsi].setLatLng([
-                                latitude,
-                                longitude
-                            ]);
+                            return;
+
+                        }
+
+
+                        if (
+                            Math.abs(latitude) < 1e-9 &&
+                            Math.abs(longitude) < 1e-9
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        // -------------------------------------
+                        // EXISTING MARKER
+                        // -------------------------------------
+
+                        if (
+                            markers[mmsi]
+                        ) {
+
+                            markers[mmsi].setLatLng(
+                                [
+                                    latitude,
+                                    longitude
+                                ]
+                            );
 
 
                             markers[mmsi].setPopupContent(
-                                createPopup(vessel)
+                                createPopup(
+                                    vessel
+                                )
                             );
 
                         }
 
 
-                        // -----------------------------------------
-                        // NEW VESSEL
-                        // -----------------------------------------
+                        // -------------------------------------
+                        // NEW MARKER
+                        // -------------------------------------
 
                         else {
 
@@ -296,14 +875,18 @@
                                         longitude
                                     ],
                                     {
+
                                         icon:
                                             createShipIcon()
+
                                     }
                                 );
 
 
                             marker.bindPopup(
-                                createPopup(vessel)
+                                createPopup(
+                                    vessel
+                                )
                             );
 
 
@@ -312,7 +895,9 @@
                             );
 
 
-                            marker.addTo(map);
+                            marker.addTo(
+                                map
+                            );
 
 
                             markers[mmsi] =
@@ -324,15 +909,19 @@
                 );
 
 
-                // =============================================
-                // REMOVE VESSELS NO LONGER IN THE API RESULT
-                // =============================================
+                // ---------------------------------------------
+                // REMOVE INACTIVE MARKERS
+                // ---------------------------------------------
 
-                Object.keys(markers).forEach(
+                Object.keys(
+                    markers
+                ).forEach(
                     mmsi => {
 
                         if (
-                            !activeMMSIs.has(mmsi)
+                            !activeMMSIs.has(
+                                mmsi
+                            )
                         ) {
 
                             map.removeLayer(
@@ -342,6 +931,11 @@
 
                             delete markers[mmsi];
 
+
+                            removeVesselTrail(
+                                mmsi
+                            );
+
                         }
 
                     }
@@ -349,13 +943,14 @@
 
 
                 console.log(
-                    `Updated ${data.vessels.length} vessels`
+                    `Updated ${currentVessels.length} vessels`
                 );
 
             }
 
-
-            catch (error) {
+            catch (
+                error
+            ) {
 
                 console.error(
                     "Failed to update vessels:",
@@ -364,23 +959,199 @@
 
             }
 
+            finally {
+
+                vesselUpdateRunning =
+                    false;
+
+            }
+
         }
 
 
         // =====================================================
-        // INITIAL LOAD
+        // UPDATE OBSERVED AIS TRACKS
         // =====================================================
 
-        updateVessels();
+        async function updateTrails() {
+
+            if (
+                historyUpdateRunning
+            ) {
+
+                return;
+
+            }
+
+
+            if (
+                currentVessels.length === 0
+            ) {
+
+                return;
+
+            }
+
+
+            historyUpdateRunning =
+                true;
+
+
+            try {
+
+                const mmsis =
+                    currentVessels
+                        .map(
+                            vessel =>
+                                String(
+                                    vessel.mmsi
+                                )
+                        )
+                        .filter(
+                            mmsi =>
+                                mmsi.length > 0
+                        );
+
+
+                if (
+                    mmsis.length === 0
+                ) {
+
+                    return;
+
+                }
+
+
+                const query =
+                    mmsis
+                        .map(
+                            mmsi =>
+                                encodeURIComponent(
+                                    mmsi
+                                )
+                        )
+                        .join(",");
+
+
+                const url =
+                    `${HISTORY_API_URL}` +
+                    `?mmsis=${query}` +
+                    `&limit=${HISTORY_LIMIT}`;
+
+
+                const response =
+                    await fetch(
+                        url,
+                        {
+                            cache:
+                                "no-store"
+                        }
+                    );
+
+
+                if (
+                    !response.ok
+                ) {
+
+                    throw new Error(
+                        `HTTP ${response.status}`
+                    );
+
+                }
+
+
+                const data =
+                    await response.json();
+
+
+                const histories =
+                    data.histories ||
+                    {};
+
+
+                Object.entries(
+                    histories
+                ).forEach(
+                    (
+                        [
+                            mmsi,
+                            history
+                        ]
+                    ) => {
+
+                        updateVesselTrail(
+                            mmsi,
+                            history
+                        );
+
+                    }
+                );
+
+
+                console.log(
+                    `Updated trails for ${
+                        Object.keys(
+                            histories
+                        ).length
+                    } vessels`
+                );
+
+            }
+
+            catch (
+                error
+            ) {
+
+                console.error(
+                    "Failed to update trails:",
+                    error
+                );
+
+            }
+
+            finally {
+
+                historyUpdateRunning =
+                    false;
+
+            }
+
+        }
 
 
         // =====================================================
-        // CONTINUOUS DATA UPDATE
+        // INITIALIZATION
+        // =====================================================
+
+        async function initializeMapData() {
+
+            await updateVessels();
+
+            await updateTrails();
+
+        }
+
+
+        initializeMapData();
+
+
+        // =====================================================
+        // LIVE VESSEL POSITION UPDATE
         // =====================================================
 
         setInterval(
             updateVessels,
-            REFRESH_INTERVAL
+            VESSEL_REFRESH_INTERVAL
+        );
+
+
+        // =====================================================
+        // LIVE TRAIL UPDATE
+        // =====================================================
+
+        setInterval(
+            updateTrails,
+            HISTORY_REFRESH_INTERVAL
         );
 
     </script>

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import os
 import random
 import signal
@@ -25,7 +26,6 @@ API_KEY = os.getenv(
 )
 
 if not API_KEY:
-
     raise RuntimeError(
         "PELYR_API_KEY not found in .env"
     )
@@ -34,6 +34,24 @@ if not API_KEY:
 WS_URL = (
     "wss://stream.pelyr.com/v1/stream"
 )
+
+
+# ============================================================
+# AIS QUALITY CONFIGURATION
+# ============================================================
+
+# A long observation gap is treated as a track break.
+# We do NOT reject the new point just because the vessel
+# appears far away after a long gap.
+MAX_CONTINUITY_GAP_SECONDS = 30 * 60
+
+# Merchant-vessel movement above this speed is considered
+# invalid for observed-track continuity.
+#
+# Important:
+# This is NOT the vessel's reported SOG. It is the speed
+# calculated from two consecutive AIS positions.
+MAX_IMPLIED_SPEED_KNOTS = 50.0
 
 
 # ============================================================
@@ -62,6 +80,103 @@ SUBSCRIPTION = {
 
 
 # ============================================================
+# TEMPORAL VALIDATION STATE
+# ============================================================
+
+# Last accepted AIS observation for each MMSI.
+#
+# This state is intentionally kept in the stream process.
+# It allows us to identify impossible short-time jumps while
+# still allowing legitimate movement after long AIS gaps.
+last_valid_positions = {}
+
+
+# Diagnostic counters for this running process.
+validation_stats = {
+    "accepted": 0,
+    "rejected_missing": 0,
+    "rejected_coordinates": 0,
+    "rejected_timestamp": 0,
+    "rejected_jump": 0
+}
+
+
+# ============================================================
+# DISTANCE / SPEED HELPERS
+# ============================================================
+
+def haversine_km(
+    latitude1,
+    longitude1,
+    latitude2,
+    longitude2
+):
+    """
+    Calculate great-circle distance between two coordinates.
+    """
+
+    earth_radius_km = 6371.0088
+
+    lat1 = math.radians(latitude1)
+    lat2 = math.radians(latitude2)
+
+    delta_lat = math.radians(
+        latitude2 - latitude1
+    )
+
+    delta_lon = math.radians(
+        longitude2 - longitude1
+    )
+
+    a = (
+        math.sin(delta_lat / 2) ** 2
+        +
+        math.cos(lat1)
+        *
+        math.cos(lat2)
+        *
+        math.sin(delta_lon / 2) ** 2
+    )
+
+    a = min(
+        1.0,
+        max(0.0, a)
+    )
+
+    return (
+        earth_radius_km
+        *
+        2
+        *
+        math.asin(math.sqrt(a))
+    )
+
+
+def implied_speed_knots(
+    distance_km,
+    elapsed_seconds
+):
+    """
+    Convert distance/time into knots.
+    """
+
+    if elapsed_seconds <= 0:
+        return float("inf")
+
+    km_per_hour = (
+        distance_km
+        /
+        (elapsed_seconds / 3600.0)
+    )
+
+    return (
+        km_per_hour
+        /
+        1.852
+    )
+
+
+# ============================================================
 # PROCESS AIS POSITION
 # ============================================================
 
@@ -80,17 +195,218 @@ def process_position(data):
     # Validate required fields
     # --------------------------------------------------------
 
-    if mmsi is None:
+    if (
+        mmsi is None
+        or latitude is None
+        or longitude is None
+        or timestamp is None
+    ):
+
+        validation_stats["rejected_missing"] += 1
+
         return None
 
-    if latitude is None:
+
+    # --------------------------------------------------------
+    # Validate coordinate values
+    # --------------------------------------------------------
+
+    try:
+
+        latitude = float(latitude)
+
+        longitude = float(longitude)
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        validation_stats["rejected_coordinates"] += 1
+
         return None
 
-    if longitude is None:
+
+    if not math.isfinite(latitude):
+
+        validation_stats["rejected_coordinates"] += 1
+
         return None
 
-    if timestamp is None:
+
+    if not math.isfinite(longitude):
+
+        validation_stats["rejected_coordinates"] += 1
+
         return None
+
+
+    # --------------------------------------------------------
+    # Validate geographic bounds
+    # --------------------------------------------------------
+
+    if not (
+        -90.0 <= latitude <= 90.0
+    ):
+
+        validation_stats["rejected_coordinates"] += 1
+
+        return None
+
+
+    if not (
+        -180.0 <= longitude <= 180.0
+    ):
+
+        validation_stats["rejected_coordinates"] += 1
+
+        return None
+
+
+    # --------------------------------------------------------
+    # Reject the AIS null/sentinel position (0, 0)
+    # --------------------------------------------------------
+
+    # Latitude 0 and longitude 0 is a real geographic
+    # coordinate, but it is appearing in this feed as an
+    # invalid/missing-position sentinel.
+    #
+    # We reject only the exact (0, 0) pair here.
+    #
+    # Longitude 0 by itself is NOT rejected because ships
+    # can legitimately cross the Prime Meridian.
+
+    if (
+        abs(latitude) < 1e-9
+        and
+        abs(longitude) < 1e-9
+    ):
+
+        validation_stats["rejected_coordinates"] += 1
+
+        return None
+
+
+    # --------------------------------------------------------
+    # Validate AIS timestamp
+    # --------------------------------------------------------
+
+    try:
+
+        parsed_timestamp = datetime.fromisoformat(
+            str(timestamp).replace(
+                "Z",
+                "+00:00"
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        validation_stats["rejected_timestamp"] += 1
+
+        return None
+
+
+    # --------------------------------------------------------
+    # Normalize timestamp to UTC
+    # --------------------------------------------------------
+
+    if parsed_timestamp.tzinfo is None:
+
+        parsed_timestamp = parsed_timestamp.replace(
+            tzinfo=timezone.utc
+        )
+
+    else:
+
+        parsed_timestamp = parsed_timestamp.astimezone(
+            timezone.utc
+        )
+
+
+    normalized_timestamp = (
+        parsed_timestamp.isoformat()
+    )
+
+
+    # --------------------------------------------------------
+    # Temporal continuity validation
+    # --------------------------------------------------------
+
+    vessel_key = str(mmsi)
+
+    previous = last_valid_positions.get(
+        vessel_key
+    )
+
+
+    if previous is not None:
+
+        previous_timestamp = previous["timestamp"]
+
+        elapsed_seconds = (
+            parsed_timestamp
+            -
+            previous_timestamp
+        ).total_seconds()
+
+
+        # ----------------------------------------------------
+        # Ignore out-of-order/duplicate timestamps.
+        # ----------------------------------------------------
+
+        if elapsed_seconds <= 0:
+
+            validation_stats["rejected_timestamp"] += 1
+
+            return None
+
+
+        # ----------------------------------------------------
+        # Only perform speed validation when observations are
+        # close enough in time to represent one continuous
+        # observed track.
+        #
+        # A long gap is NOT rejected. It becomes a natural
+        # track break for the historical/frontend layer.
+        # ----------------------------------------------------
+
+        if (
+            elapsed_seconds
+            <=
+            MAX_CONTINUITY_GAP_SECONDS
+        ):
+
+            distance_km = haversine_km(
+
+                previous["latitude"],
+                previous["longitude"],
+
+                latitude,
+                longitude
+
+            )
+
+            speed_knots = implied_speed_knots(
+
+                distance_km,
+                elapsed_seconds
+
+            )
+
+
+            if (
+                speed_knots
+                >
+                MAX_IMPLIED_SPEED_KNOTS
+            ):
+
+                validation_stats["rejected_jump"] += 1
+
+                return None
 
 
     # --------------------------------------------------------
@@ -103,12 +419,30 @@ def process_position(data):
 
 
     # --------------------------------------------------------
+    # Store accepted point as temporal reference
+    # --------------------------------------------------------
+
+    last_valid_positions[vessel_key] = {
+
+        "latitude": latitude,
+
+        "longitude": longitude,
+
+        "timestamp": parsed_timestamp
+
+    }
+
+
+    validation_stats["accepted"] += 1
+
+
+    # --------------------------------------------------------
     # Normalize AIS record
     # --------------------------------------------------------
 
     return {
 
-        "mmsi": str(mmsi),
+        "mmsi": vessel_key,
 
         "lat": latitude,
 
@@ -120,7 +454,7 @@ def process_position(data):
 
         "heading": data.get("heading"),
 
-        "timestamp": timestamp,
+        "timestamp": normalized_timestamp,
 
         "received_at": received_at
 
@@ -683,6 +1017,40 @@ async def connect_and_stream():
             except asyncio.CancelledError:
 
                 pass
+
+
+        # ----------------------------------------------------
+        # Print validation statistics
+        # ----------------------------------------------------
+
+        print(
+            "\nAIS validation statistics:"
+        )
+
+        print(
+            f"Accepted: "
+            f"{validation_stats['accepted']}"
+        )
+
+        print(
+            f"Rejected missing fields: "
+            f"{validation_stats['rejected_missing']}"
+        )
+
+        print(
+            f"Rejected coordinates: "
+            f"{validation_stats['rejected_coordinates']}"
+        )
+
+        print(
+            f"Rejected timestamps: "
+            f"{validation_stats['rejected_timestamp']}"
+        )
+
+        print(
+            f"Rejected impossible jumps: "
+            f"{validation_stats['rejected_jump']}"
+        )
 
 
         print(

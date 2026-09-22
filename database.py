@@ -1,4 +1,6 @@
 import sqlite3
+from datetime import datetime, timedelta, timezone
+from math import floor
 from pathlib import Path
 
 
@@ -151,6 +153,55 @@ def initialize_database():
             mmsi,
             timestamp
         )
+        """
+    )
+
+
+    # --------------------------------------------------------
+    # STATIC / VOYAGE VESSEL METADATA
+    # --------------------------------------------------------
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vessel_metadata (
+
+            mmsi TEXT PRIMARY KEY,
+
+            imo TEXT,
+            shipname TEXT,
+            callsign TEXT,
+            shiptype INTEGER,
+            destination TEXT,
+            draught REAL,
+            eta TEXT,
+            dim_a REAL,
+            dim_b REAL,
+            dim_c REAL,
+            dim_d REAL,
+            length REAL,
+            beam REAL,
+            last_static_update TEXT,
+            static_source TEXT
+
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+        idx_vessel_metadata_shipname
+
+        ON vessel_metadata (shipname)
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS
+        idx_vessel_metadata_imo
+
+        ON vessel_metadata (imo)
         """
     )
 
@@ -437,6 +488,142 @@ def save_vessels_batch(positions):
 
 
 # ============================================================
+# SAVE STATIC AIS METADATA
+# ============================================================
+
+METADATA_FIELDS = (
+    "imo",
+    "shipname",
+    "callsign",
+    "shiptype",
+    "destination",
+    "draught",
+    "eta",
+    "dim_a",
+    "dim_b",
+    "dim_c",
+    "dim_d",
+    "length",
+    "beam",
+)
+
+
+def _save_metadata_batch(cursor, metadata_records):
+    """Merge non-empty static AIS fields without erasing known values."""
+
+    if not metadata_records:
+        return
+
+    rows = []
+
+    for record in metadata_records:
+
+        mmsi = str(record.get("mmsi") or "").strip()
+
+        if not mmsi:
+            continue
+
+        rows.append(
+            tuple(
+                [mmsi]
+                + [record.get(field) for field in METADATA_FIELDS]
+                + [
+                    record.get("last_static_update"),
+                    record.get("static_source"),
+                ]
+            )
+        )
+
+    if not rows:
+        return
+
+    cursor.executemany(
+        """
+        INSERT INTO vessel_metadata (
+            mmsi,
+            imo,
+            shipname,
+            callsign,
+            shiptype,
+            destination,
+            draught,
+            eta,
+            dim_a,
+            dim_b,
+            dim_c,
+            dim_d,
+            length,
+            beam,
+            last_static_update,
+            static_source
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(mmsi)
+        DO UPDATE SET
+            imo = COALESCE(excluded.imo, vessel_metadata.imo),
+            shipname = COALESCE(excluded.shipname, vessel_metadata.shipname),
+            callsign = COALESCE(excluded.callsign, vessel_metadata.callsign),
+            shiptype = COALESCE(excluded.shiptype, vessel_metadata.shiptype),
+            destination = COALESCE(excluded.destination, vessel_metadata.destination),
+            draught = COALESCE(excluded.draught, vessel_metadata.draught),
+            eta = COALESCE(excluded.eta, vessel_metadata.eta),
+            dim_a = COALESCE(excluded.dim_a, vessel_metadata.dim_a),
+            dim_b = COALESCE(excluded.dim_b, vessel_metadata.dim_b),
+            dim_c = COALESCE(excluded.dim_c, vessel_metadata.dim_c),
+            dim_d = COALESCE(excluded.dim_d, vessel_metadata.dim_d),
+            length = COALESCE(excluded.length, vessel_metadata.length),
+            beam = COALESCE(excluded.beam, vessel_metadata.beam),
+            last_static_update = COALESCE(
+                excluded.last_static_update,
+                vessel_metadata.last_static_update
+            ),
+            static_source = COALESCE(
+                excluded.static_source,
+                vessel_metadata.static_source
+            )
+        """,
+        rows,
+    )
+
+
+def save_vessel_metadata_batch(metadata_records):
+
+    if not metadata_records:
+        return
+
+    connection = get_connection()
+
+    try:
+
+        _save_metadata_batch(
+            connection.cursor(),
+            metadata_records,
+        )
+
+        connection.commit()
+
+    except Exception:
+
+        connection.rollback()
+
+        raise
+
+    finally:
+
+        connection.close()
+
+
+def save_stream_batch(positions, metadata_records):
+    """Persist position and static AIS update groups through one writer."""
+
+    if positions:
+        save_vessels_batch(positions)
+
+    if metadata_records:
+        save_vessel_metadata_batch(metadata_records)
+
+
+# ============================================================
 # GET CURRENT VESSELS
 # ============================================================
 
@@ -451,9 +638,23 @@ def get_current_vessels(limit=100):
 
         cursor.execute(
             """
-            SELECT *
+            SELECT
+                vessels.*,
+                vessel_metadata.imo,
+                vessel_metadata.shipname,
+                vessel_metadata.callsign,
+                vessel_metadata.shiptype,
+                vessel_metadata.destination,
+                vessel_metadata.draught,
+                vessel_metadata.eta,
+                vessel_metadata.length,
+                vessel_metadata.beam,
+                vessel_metadata.last_static_update
 
             FROM vessels
+
+            LEFT JOIN vessel_metadata
+            ON vessel_metadata.mmsi = vessels.mmsi
 
             ORDER BY updated_at DESC
             """
@@ -463,9 +664,23 @@ def get_current_vessels(limit=100):
 
         cursor.execute(
             """
-            SELECT *
+            SELECT
+                vessels.*,
+                vessel_metadata.imo,
+                vessel_metadata.shipname,
+                vessel_metadata.callsign,
+                vessel_metadata.shiptype,
+                vessel_metadata.destination,
+                vessel_metadata.draught,
+                vessel_metadata.eta,
+                vessel_metadata.length,
+                vessel_metadata.beam,
+                vessel_metadata.last_static_update
 
             FROM vessels
+
+            LEFT JOIN vessel_metadata
+            ON vessel_metadata.mmsi = vessels.mmsi
 
             ORDER BY updated_at DESC
 
@@ -484,6 +699,41 @@ def get_current_vessels(limit=100):
         dict(row)
         for row in rows
     ]
+
+
+# ============================================================
+# GET RECENT MMSIS FOR STATIC AIS SUBSCRIPTIONS
+# ============================================================
+
+def get_recent_vessel_mmsis(limit=1500):
+
+    connection = get_connection()
+
+    try:
+
+        rows = connection.execute(
+            """
+            SELECT mmsi
+
+            FROM vessels
+
+            WHERE mmsi IS NOT NULL
+
+            ORDER BY updated_at DESC
+
+            LIMIT ?
+            """,
+            (limit,)
+        ).fetchall()
+
+        return [
+            str(row["mmsi"])
+            for row in rows
+        ]
+
+    finally:
+
+        connection.close()
 
 # ============================================================
 # GET HISTORY FOR MULTIPLE VESSELS
@@ -613,6 +863,128 @@ def get_vessel_histories(
 
 
     return histories
+
+
+# ============================================================
+# GET TRAFFIC DENSITY CELLS
+# ============================================================
+
+def get_traffic_density(
+    hours=24,
+    grid_size=2.0,
+    max_points=50000
+):
+
+    cutoff = (
+        datetime.now(timezone.utc)
+        - timedelta(hours=hours)
+    ).isoformat()
+
+    connection = get_connection()
+
+    try:
+
+        rows = connection.execute(
+            """
+            SELECT mmsi, latitude, longitude
+            FROM positions
+            WHERE timestamp >= ?
+              AND latitude BETWEEN -90 AND 90
+              AND longitude BETWEEN -180 AND 180
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (cutoff, max_points)
+        ).fetchall()
+
+    finally:
+
+        connection.close()
+
+
+    cells = {}
+    vessels = set()
+
+    for row in rows:
+
+        latitude = float(row["latitude"])
+        longitude = float(row["longitude"])
+
+        latitude_cell = floor(latitude / grid_size) * grid_size
+        longitude_cell = floor(longitude / grid_size) * grid_size
+        key = (latitude_cell, longitude_cell)
+
+        cell = cells.setdefault(
+            key,
+            {
+                "latitude": round(
+                    latitude_cell + grid_size / 2,
+                    4
+                ),
+                "longitude": round(
+                    longitude_cell + grid_size / 2,
+                    4
+                ),
+                "intensity": 0,
+                "vessels": set()
+            }
+        )
+
+        cell["intensity"] += 1
+        cell["vessels"].add(str(row["mmsi"]))
+        vessels.add(str(row["mmsi"]))
+
+
+    return {
+        "hours": hours,
+        "grid_size": grid_size,
+        "point_count": len(rows),
+        "vessel_count": len(vessels),
+        "cells": [
+            {
+                "latitude": cell["latitude"],
+                "longitude": cell["longitude"],
+                "intensity": cell["intensity"],
+                "vessels": len(cell["vessels"])
+            }
+            for cell in cells.values()
+        ]
+    }
+
+
+# ============================================================
+# GET DESTINATION / PORT ANALYSIS
+# ============================================================
+
+def get_destination_analysis():
+
+    connection = get_connection()
+
+    try:
+
+        rows = connection.execute(
+            """
+            SELECT destination, COUNT(*) AS vessel_count
+            FROM vessel_metadata
+            WHERE destination IS NOT NULL
+              AND TRIM(destination) != ''
+            GROUP BY destination
+            ORDER BY vessel_count DESC, destination ASC
+            """
+        ).fetchall()
+
+    finally:
+
+        connection.close()
+
+
+    return [
+        {
+            "destination": row["destination"],
+            "vessel_count": row["vessel_count"]
+        }
+        for row in rows
+    ]
 
 
 # ============================================================

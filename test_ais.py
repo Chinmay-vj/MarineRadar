@@ -17,35 +17,41 @@ headers = {
     "Authorization": f"Bearer {API_KEY}"
 }
 
-response = requests.get(
-    url,
-    params=params,
-    headers=headers,
-    timeout=0
-)
+def run_live_check():
 
-print("Status:", response.status_code)
+    response = requests.get(
+        url,
+        params=params,
+        headers=headers,
+        timeout=10
+    )
 
-if response.status_code == 200:
-    data = response.json()
+    print("Status:", response.status_code)
 
-    print("Number of vessels:", data.get("count"))
+    if response.status_code == 200:
+        data = response.json()
 
-    for vessel in data.get("vessels", [])[:10]:
+        print("Number of vessels:", data.get("count"))
 
-        position = vessel.get("position", {})
-        static = vessel.get("static", {})
+        for vessel in data.get("vessels", [])[:10]:
 
-        print("\n--------------------")
-        print("Name:", static.get("name"))
-        print("MMSI:", vessel.get("mmsi"))
-        print("IMO:", static.get("imo"))
-        print("Latitude:", position.get("lat"))
-        print("Longitude:", position.get("lon"))
-        print("Speed:", position.get("sog"))
-        print("Course:", position.get("cog"))
-        print("Destination:", static.get("dest"))
+            position = vessel.get("position", {})
+            static = vessel.get("static", {})
 
-else:
-    print("Error:")
-    print(response.text)
+            print("\n--------------------")
+            print("Name:", static.get("name"))
+            print("MMSI:", vessel.get("mmsi"))
+            print("IMO:", static.get("imo"))
+            print("Latitude:", position.get("lat"))
+            print("Longitude:", position.get("lon"))
+            print("Speed:", position.get("sog"))
+            print("Course:", position.get("cog"))
+            print("Destination:", static.get("dest"))
+
+    else:
+        print("Error:")
+        print(response.text)
+
+
+if __name__ == "__main__":
+    run_live_check()

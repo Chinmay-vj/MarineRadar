@@ -50,12 +50,248 @@
 
         }
 
+
+        #metadata-filter {
+
+            position: absolute;
+            z-index: 1000;
+            top: 16px;
+            left: 16px;
+            width: min(360px, calc(100vw - 32px));
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid rgba(30, 55, 75, 0.2);
+            border-radius: 8px;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, 0.2);
+            font-family: Arial, sans-serif;
+        }
+
+
+        #metadata-filter-row {
+
+            display: flex;
+            gap: 8px;
+
+        }
+
+
+        #metadata-filter input,
+        #metadata-filter select,
+        #metadata-filter button {
+
+            min-height: 34px;
+            box-sizing: border-box;
+            border: 1px solid #9aa8b3;
+            border-radius: 4px;
+            background: white;
+            color: #1d2d38;
+            font-size: 14px;
+
+        }
+
+
+        #metadata-filter input {
+
+            min-width: 0;
+            flex: 1;
+            padding: 0 9px;
+
+        }
+
+
+        #metadata-filter select {
+
+            width: 118px;
+            padding: 0 5px;
+
+        }
+
+
+        #metadata-filter button {
+
+            width: 34px;
+            cursor: pointer;
+            font-size: 18px;
+
+        }
+
+
+        #metadata-filter button:hover {
+
+            background: #eef4f7;
+
+        }
+
+
+        #metadata-filter-status {
+
+            display: block;
+            margin-top: 7px;
+            color: #425563;
+            font-size: 12px;
+
+        }
+
+
+        #analysis-panel {
+
+            position: absolute;
+            z-index: 1000;
+            top: 16px;
+            right: 16px;
+            width: min(300px, calc(100vw - 32px));
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid rgba(30, 55, 75, 0.2);
+            border-radius: 8px;
+            box-shadow: 0 3px 14px rgba(0, 0, 0, 0.2);
+            font-family: Arial, sans-serif;
+            color: #1d2d38;
+        }
+
+
+        #analysis-panel h3 {
+
+            margin: 0 0 8px;
+            font-size: 15px;
+
+        }
+
+
+        #analysis-controls {
+
+            display: flex;
+            gap: 8px;
+
+        }
+
+
+        #analysis-panel select,
+        #analysis-panel button {
+
+            min-height: 32px;
+            box-sizing: border-box;
+            border: 1px solid #9aa8b3;
+            border-radius: 4px;
+            background: white;
+            color: #1d2d38;
+            font-size: 13px;
+
+        }
+
+
+        #analysis-panel select {
+
+            flex: 1;
+            padding: 0 5px;
+
+        }
+
+
+        #analysis-panel button {
+
+            padding: 0 10px;
+            cursor: pointer;
+
+        }
+
+
+        #analysis-panel button.active {
+
+            background: #176b87;
+            color: white;
+
+        }
+
+
+        #analysis-summary,
+        #route-analysis {
+
+            display: block;
+            margin-top: 8px;
+            color: #425563;
+            font-size: 12px;
+            line-height: 1.45;
+
+        }
+
+
+        #route-analysis {
+
+            border-top: 1px solid #d6e0e5;
+            padding-top: 8px;
+
+        }
+
     </style>
 
 </head>
 
 
 <body>
+
+    <section id="metadata-filter" aria-label="Vessel metadata filter">
+
+        <div id="metadata-filter-row">
+
+            <input
+                id="metadata-filter-query"
+                type="search"
+                placeholder="Search vessel metadata"
+                aria-label="Search vessel metadata"
+                autocomplete="off"
+            >
+
+            <select
+                id="metadata-filter-field"
+                aria-label="Metadata field"
+            >
+                <option value="all">All fields</option>
+                <option value="shipname">Name</option>
+                <option value="mmsi">MMSI</option>
+                <option value="imo">IMO</option>
+                <option value="callsign">Call sign</option>
+                <option value="shiptype">Ship type</option>
+                <option value="destination">Destination</option>
+            </select>
+
+            <button
+                id="metadata-filter-clear"
+                type="button"
+                title="Clear filter"
+                aria-label="Clear filter"
+            >
+                x
+            </button>
+
+        </div>
+
+        <small id="metadata-filter-status">Showing all vessels</small>
+
+    </section>
+
+    <section id="analysis-panel" aria-label="Traffic analysis">
+
+        <h3>Traffic analysis</h3>
+
+        <div id="analysis-controls">
+
+            <select id="analysis-hours" aria-label="Traffic time window">
+                <option value="24">Last 24 hours</option>
+                <option value="72">Last 3 days</option>
+                <option value="168">Last 7 days</option>
+            </select>
+
+            <button id="heatmap-toggle" type="button">
+                Heatmap off
+            </button>
+
+        </div>
+
+        <small id="analysis-summary">Loading traffic analysis...</small>
+        <small id="route-analysis">Select a vessel for route analysis.</small>
+
+    </section>
 
     <div id="map"></div>
 
@@ -66,6 +302,10 @@
 
     <script
         src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+    </script>
+
+    <script
+        src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js">
     </script>
 
 
@@ -80,6 +320,15 @@
 
         const HISTORY_API_URL =
             "/api/v1/vessels/history";
+
+        const SINGLE_VESSEL_HISTORY_API_URL =
+            "/api/v1/vessels";
+
+        const TRAFFIC_ANALYSIS_API_URL =
+            "/api/v1/analysis/traffic";
+
+        const PORT_ANALYSIS_API_URL =
+            "/api/v1/analysis/ports";
 
 
         // =====================================================
@@ -136,6 +385,10 @@
                 2
             );
 
+        let trafficHeatLayer = null;
+
+        let heatmapEnabled = false;
+
 
         // =====================================================
         // OPENSTREETMAP
@@ -175,9 +428,332 @@
 
         let currentVessels = [];
 
+        let allVessels = [];
+
+        let filterQuery = "";
+
+        let filterField = "all";
+
+        let filterRefreshTimer = null;
+
         let vesselUpdateRunning = false;
 
         let historyUpdateRunning = false;
+
+        let selectedTrailMmsi = null;
+
+        let selectedTrailRequestId = 0;
+
+
+        function vesselMetadataValue(
+            vessel,
+            field
+        ) {
+
+            return String(
+                vessel[field] ??
+                ""
+            ).toLowerCase();
+
+        }
+
+
+        function filterVessels(
+            vessels
+        ) {
+
+            const query =
+                filterQuery.trim().toLowerCase();
+
+
+            if (!query) {
+
+                return vessels;
+
+            }
+
+
+            const fields =
+                filterField === "all"
+                    ? [
+                        "shipname",
+                        "mmsi",
+                        "imo",
+                        "callsign",
+                        "shiptype",
+                        "destination"
+                    ]
+                    : [filterField];
+
+
+            return vessels.filter(
+                vessel => fields.some(
+                    field => vesselMetadataValue(
+                        vessel,
+                        field
+                    ).includes(query)
+                )
+            );
+
+        }
+
+
+        function updateFilterStatus() {
+
+            const visibleCount =
+                filterVessels(allVessels).length;
+
+
+            const status =
+                document.getElementById(
+                    "metadata-filter-status"
+                );
+
+
+            if (!status) {
+
+                return;
+
+            }
+
+
+            if (!filterQuery.trim()) {
+
+                status.textContent =
+                    `Showing all ${allVessels.length} vessels`;
+
+                return;
+
+            }
+
+
+            status.textContent =
+                `${visibleCount} of ${allVessels.length} vessels match`;
+
+        }
+
+
+        function scheduleFilterRefresh() {
+
+            updateFilterStatus();
+
+            clearTimeout(
+                filterRefreshTimer
+            );
+
+            filterRefreshTimer = setTimeout(
+                updateVessels,
+                150
+            );
+
+        }
+
+
+        async function loadTrafficAnalysis() {
+
+            const hours =
+                document.getElementById(
+                    "analysis-hours"
+                ).value;
+
+            const summary =
+                document.getElementById(
+                    "analysis-summary"
+                );
+
+            try {
+
+                const response = await fetch(
+                    `${TRAFFIC_ANALYSIS_API_URL}`
+                    + `?hours=${hours}&grid_size=2`,
+                    {cache: "no-store"}
+                );
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        `HTTP ${response.status}`
+                    );
+
+                }
+
+                const data = await response.json();
+
+                summary.textContent =
+                    `${data.vessel_count} vessels, `
+                    + `${data.point_count} AIS points, `
+                    + `${data.cells.length} busy areas`;
+
+                if (heatmapEnabled) {
+
+                    updateTrafficHeatmap(
+                        data.cells
+                    );
+
+                }
+
+            }
+
+            catch (error) {
+
+                summary.textContent =
+                    "Traffic analysis unavailable";
+                console.error(
+                    "Failed to load traffic analysis:",
+                    error
+                );
+
+            }
+
+        }
+
+
+        async function loadPortAnalysis() {
+
+            const summary =
+                document.getElementById(
+                    "analysis-summary"
+                );
+
+            try {
+
+                const response = await fetch(
+                    PORT_ANALYSIS_API_URL,
+                    {cache: "no-store"}
+                );
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        `HTTP ${response.status}`
+                    );
+
+                }
+
+                const data = await response.json();
+                const topDestinations =
+                    data.destinations
+                        .slice(0, 3)
+                        .map(
+                            item => `${item.destination} (${item.vessel_count})`
+                        )
+                        .join(", ");
+
+                if (topDestinations) {
+
+                    summary.title =
+                        `Top destinations: ${topDestinations}`;
+
+                }
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "Failed to load port analysis:",
+                    error
+                );
+
+            }
+
+        }
+
+
+        function updateTrafficHeatmap(cells) {
+
+            const points = cells.map(
+                cell => [
+                    cell.latitude,
+                    cell.longitude,
+                    cell.intensity
+                ]
+            );
+
+            if (trafficHeatLayer) {
+
+                trafficHeatLayer.setLatLngs(
+                    points
+                );
+
+                return;
+
+            }
+
+            trafficHeatLayer = L.heatLayer(
+                points,
+                {
+                    radius: 28,
+                    blur: 20,
+                    maxZoom: 6,
+                    minOpacity: 0.35,
+                    gradient: {
+                        0.2: "#4fc3f7",
+                        0.5: "#ffca28",
+                        0.8: "#ef6c00",
+                        1.0: "#c62828"
+                    }
+                }
+            );
+
+            if (heatmapEnabled) {
+
+                trafficHeatLayer.addTo(map);
+
+            }
+
+        }
+
+
+        async function loadRouteAnalysis(mmsi) {
+
+            const summary =
+                document.getElementById(
+                    "route-analysis"
+                );
+
+            summary.textContent =
+                `Analyzing observed route for ${mmsi}...`;
+
+            try {
+
+                const response = await fetch(
+                    `${SINGLE_VESSEL_HISTORY_API_URL}/`
+                    + `${encodeURIComponent(mmsi)}/route?limit=100`,
+                    {cache: "no-store"}
+                );
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        `HTTP ${response.status}`
+                    );
+
+                }
+
+                const data = await response.json();
+                const route = data.route;
+                const speed = route.average_speed_knots;
+
+                summary.textContent =
+                    `${route.segment_count} observed segment(s), `
+                    + `${route.distance_nm} nautical miles, `
+                    + `average ${speed ?? "N/A"} knots`;
+
+            }
+
+            catch (error) {
+
+                summary.textContent =
+                    "Route analysis unavailable";
+                console.error(
+                    "Failed to load route analysis:",
+                    error
+                );
+
+            }
+
+        }
 
 
         // =====================================================
@@ -228,6 +804,41 @@
         // CREATE POPUP
         // =====================================================
 
+        function escapeHtml(value) {
+
+            return String(
+                value ?? ""
+            ).replace(
+                /[&<>'"]/g,
+                character => ({
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    "'": "&#39;",
+                    "\"": "&quot;"
+                })[character]
+            );
+
+        }
+
+
+        function displayValue(value) {
+
+            if (
+                value === null ||
+                value === undefined ||
+                value === ""
+            ) {
+
+                return "N/A";
+
+            }
+
+            return escapeHtml(value);
+
+        }
+
+
         function createPopup(vessel) {
 
             const speed =
@@ -251,6 +862,13 @@
                     : "N/A";
 
 
+            const vesselName =
+                displayValue(
+                    vessel.shipname ||
+                    "Unknown vessel"
+                );
+
+
             return `
                 <div style="
                     font-family: Arial;
@@ -258,11 +876,41 @@
                 ">
 
                     <h4>
-                        🚢 Unknown vessel
+                        🚢 ${vesselName}
                     </h4>
 
+                    <b>Name:</b>
+                    ${vesselName}
+
+                    <br>
+
                     <b>MMSI:</b>
-                    ${vessel.mmsi}
+                    ${displayValue(vessel.mmsi)}
+
+                    <br>
+
+                    <b>IMO:</b>
+                    ${displayValue(vessel.imo)}
+
+                    <br>
+
+                    <b>Call sign:</b>
+                    ${displayValue(vessel.callsign)}
+
+                    <br>
+
+                    <b>Ship type:</b>
+                    ${displayValue(vessel.shiptype)}
+
+                    <br>
+
+                    <b>Destination:</b>
+                    ${displayValue(vessel.destination)}
+
+                    <br>
+
+                    <b>ETA:</b>
+                    ${displayValue(vessel.eta)}
 
                     <br><br>
 
@@ -281,7 +929,7 @@
                     <br>
 
                     <b>AIS Time:</b>
-                    ${vessel.last_seen}
+                    ${displayValue(vessel.last_seen)}
 
                     <br><br>
 
@@ -600,6 +1248,27 @@
 
 
         // =====================================================
+        // REMOVE ALL OBSERVED TRAILS
+        // =====================================================
+
+        function removeAllVesselTrails() {
+
+            Object.keys(
+                trails
+            ).forEach(
+                mmsi => {
+
+                    removeVesselTrail(
+                        mmsi
+                    );
+
+                }
+            );
+
+        }
+
+
+        // =====================================================
         // UPDATE ONE VESSEL'S OBSERVED TRACK
         // =====================================================
 
@@ -716,6 +1385,99 @@
 
 
         // =====================================================
+        // LOAD THE SELECTED VESSEL'S OBSERVED TRAIL
+        // =====================================================
+
+        async function showSelectedVesselTrail(
+            mmsi
+        ) {
+
+            selectedTrailMmsi = mmsi;
+
+            const requestId =
+                ++selectedTrailRequestId;
+
+            // The overview map deliberately has no trails.  At most
+            // one trail is shown: the vessel the user is inspecting.
+            removeAllVesselTrails();
+
+            try {
+
+                const response = await fetch(
+                    `${SINGLE_VESSEL_HISTORY_API_URL}/` +
+                    `${encodeURIComponent(mmsi)}/history` +
+                    `?limit=${HISTORY_LIMIT}`,
+                    {
+                        cache: "no-store"
+                    }
+                );
+
+
+                if (!response.ok) {
+
+                    throw new Error(
+                        `HTTP ${response.status}`
+                    );
+
+                }
+
+
+                const data = await response.json();
+
+
+                // A newer popup selection (or a popup close) made
+                // this response irrelevant.
+                if (
+                    selectedTrailMmsi !== mmsi ||
+                    requestId !== selectedTrailRequestId
+                ) {
+
+                    return;
+
+                }
+
+
+                updateVesselTrail(
+                    mmsi,
+                    data.history || []
+                );
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "Failed to load selected vessel trail:",
+                    error
+                );
+
+            }
+
+        }
+
+
+        function hideSelectedVesselTrail(
+            mmsi
+        ) {
+
+            if (selectedTrailMmsi !== mmsi) {
+
+                return;
+
+            }
+
+            selectedTrailMmsi = null;
+
+            ++selectedTrailRequestId;
+
+            removeVesselTrail(
+                mmsi
+            );
+
+        }
+
+
+        // =====================================================
         // UPDATE VESSEL MARKERS
         // =====================================================
 
@@ -761,9 +1523,18 @@
                     await response.json();
 
 
-                currentVessels =
+                allVessels =
                     data.vessels ||
                     [];
+
+
+                currentVessels =
+                    filterVessels(
+                        allVessels
+                    );
+
+
+                updateFilterStatus();
 
 
                 const activeMMSIs =
@@ -895,6 +1666,34 @@
                             );
 
 
+                            marker.on(
+                                "popupopen",
+                                () => {
+
+                                    showSelectedVesselTrail(
+                                        mmsi
+                                    );
+
+                                    loadRouteAnalysis(
+                                        mmsi
+                                    );
+
+                                }
+                            );
+
+
+                            marker.on(
+                                "popupclose",
+                                () => {
+
+                                    hideSelectedVesselTrail(
+                                        mmsi
+                                    );
+
+                                }
+                            );
+
+
                             marker.addTo(
                                 map
                             );
@@ -932,6 +1731,11 @@
                             delete markers[mmsi];
 
 
+                            hideSelectedVesselTrail(
+                                mmsi
+                            );
+
+
                             removeVesselTrail(
                                 mmsi
                             );
@@ -943,7 +1747,7 @@
 
 
                 console.log(
-                    `Updated ${currentVessels.length} vessels`
+                    `Updated ${currentVessels.length} visible vessels`
                 );
 
             }
@@ -1127,12 +1931,132 @@
 
             await updateVessels();
 
-            await updateTrails();
-
         }
 
 
+        const metadataFilterQuery =
+            document.getElementById(
+                "metadata-filter-query"
+            );
+
+        const metadataFilterField =
+            document.getElementById(
+                "metadata-filter-field"
+            );
+
+        const metadataFilterClear =
+            document.getElementById(
+                "metadata-filter-clear"
+            );
+
+
+        metadataFilterQuery.addEventListener(
+            "input",
+            event => {
+
+                filterQuery = event.target.value;
+
+                scheduleFilterRefresh();
+
+            }
+        );
+
+
+        metadataFilterField.addEventListener(
+            "change",
+            event => {
+
+                filterField = event.target.value;
+
+                scheduleFilterRefresh();
+
+            }
+        );
+
+
+        metadataFilterClear.addEventListener(
+            "click",
+            () => {
+
+                metadataFilterQuery.value = "";
+                metadataFilterField.value = "all";
+                filterQuery = "";
+                filterField = "all";
+
+                scheduleFilterRefresh();
+
+                metadataFilterQuery.focus();
+
+            }
+        );
+
+
+        const analysisHours =
+            document.getElementById(
+                "analysis-hours"
+            );
+
+        const heatmapToggle =
+            document.getElementById(
+                "heatmap-toggle"
+            );
+
+
+        analysisHours.addEventListener(
+            "change",
+            () => {
+
+                loadTrafficAnalysis();
+
+            }
+        );
+
+
+        heatmapToggle.addEventListener(
+            "click",
+            () => {
+
+                heatmapEnabled = !heatmapEnabled;
+
+                heatmapToggle.textContent =
+                    heatmapEnabled
+                        ? "Heatmap on"
+                        : "Heatmap off";
+
+                heatmapToggle.classList.toggle(
+                    "active",
+                    heatmapEnabled
+                );
+
+                if (heatmapEnabled) {
+
+                    loadTrafficAnalysis();
+
+                    if (trafficHeatLayer) {
+
+                        trafficHeatLayer.addTo(map);
+
+                    }
+
+                }
+
+                else if (trafficHeatLayer) {
+
+                    map.removeLayer(
+                        trafficHeatLayer
+                    );
+
+                }
+
+            }
+        );
+
+
         initializeMapData();
+
+        loadTrafficAnalysis();
+
+        loadPortAnalysis();
 
 
         // =====================================================
@@ -1142,16 +2066,6 @@
         setInterval(
             updateVessels,
             VESSEL_REFRESH_INTERVAL
-        );
-
-
-        // =====================================================
-        // LIVE TRAIL UPDATE
-        // =====================================================
-
-        setInterval(
-            updateTrails,
-            HISTORY_REFRESH_INTERVAL
         );
 
     </script>

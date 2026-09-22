@@ -4,3 +4,6 @@ streamlit-folium
 pandas
 requests
 python-dotenv
+fastapi
+uvicorn
+websockets

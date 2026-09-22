@@ -10,8 +10,9 @@ import websockets
 from dotenv import load_dotenv
 
 from database import (
+    get_recent_vessel_mmsis,
     initialize_database,
-    save_vessels_batch
+    save_stream_batch
 )
 
 
@@ -77,6 +78,19 @@ SUBSCRIPTION = {
 
     "fields": "position"
 }
+
+
+# Pelyr permits four subscriptions per connection.  The global
+# position stream uses one slot; the remaining three cover the most
+# recently observed vessels for static AIS type 5/24 updates.
+STATIC_SUBSCRIPTION_IDS = [
+    "static_1",
+    "static_2",
+    "static_3",
+]
+
+STATIC_BATCH_SIZE = 500
+STATIC_MMSI_LIMIT = 1500
 
 
 # ============================================================
@@ -462,11 +476,118 @@ def process_position(data):
 
 
 # ============================================================
+# PROCESS STATIC AIS METADATA
+# ============================================================
+
+def clean_metadata_value(value):
+
+    if isinstance(value, str):
+
+        value = value.strip()
+
+        return value or None
+
+    return value
+
+
+def optional_number(value):
+
+    if value is None or value == "":
+
+        return None
+
+    try:
+
+        number = float(value)
+
+    except (TypeError, ValueError):
+
+        return None
+
+    return number if math.isfinite(number) else None
+
+
+def process_static_metadata(data):
+    """Normalize an AIS type-5/type-24 record for field-wise merging."""
+
+    mmsi = str(data.get("mmsi") or "").strip()
+
+    if not mmsi:
+
+        return None
+
+    dim_a = optional_number(data.get("dim_a"))
+    dim_b = optional_number(data.get("dim_b"))
+    dim_c = optional_number(data.get("dim_c"))
+    dim_d = optional_number(data.get("dim_d"))
+
+    length = optional_number(data.get("length"))
+    beam = optional_number(data.get("beam"))
+
+    if length is None and dim_a is not None and dim_b is not None:
+
+        length = dim_a + dim_b
+
+    if beam is None and dim_c is not None and dim_d is not None:
+
+        beam = dim_c + dim_d
+
+    shiptype = optional_number(data.get("shiptype"))
+
+    record = {
+        "mmsi": mmsi,
+        "imo": clean_metadata_value(data.get("imo")),
+        "shipname": clean_metadata_value(
+            data.get("shipname") or data.get("name")
+        ),
+        "callsign": clean_metadata_value(data.get("callsign")),
+        "shiptype": int(shiptype) if shiptype is not None else None,
+        "destination": clean_metadata_value(
+            data.get("destination") or data.get("dest")
+        ),
+        "draught": optional_number(data.get("draught")),
+        "eta": clean_metadata_value(data.get("eta")),
+        "dim_a": dim_a,
+        "dim_b": dim_b,
+        "dim_c": dim_c,
+        "dim_d": dim_d,
+        "length": length,
+        "beam": beam,
+        "last_static_update": clean_metadata_value(data.get("rx_ts")),
+        "static_source": "pelyr_stream",
+    }
+
+    if not any(
+        record[field] is not None
+        for field in (
+            "imo",
+            "shipname",
+            "callsign",
+            "shiptype",
+            "destination",
+            "draught",
+            "eta",
+            "dim_a",
+            "dim_b",
+            "dim_c",
+            "dim_d",
+            "length",
+            "beam",
+        )
+    ):
+
+        return None
+
+    return record
+
+
+# ============================================================
 # DATABASE WRITER
 # ============================================================
 
 async def database_writer(
     position_queue,
+    metadata_queue,
     stop_event
 ):
 
@@ -477,14 +598,18 @@ async def database_writer(
 
     while True:
 
-        batch = []
+        position_batch = []
+
+        metadata_batch = []
 
 
         # ----------------------------------------------------
-        # Wait for first position
+        # Wait for the first update. Position updates remain the
+        # primary feed; static updates are drained in the same writer
+        # so SQLite never has competing stream writers.
         # ----------------------------------------------------
 
-        while not batch:
+        while not position_batch and not metadata_batch:
 
             if stop_event.is_set():
 
@@ -497,7 +622,7 @@ async def database_writer(
 
                     try:
 
-                        batch.append(
+                        position_batch.append(
                             position_queue.get_nowait()
                         )
 
@@ -506,7 +631,20 @@ async def database_writer(
                         break
 
 
-                if not batch:
+                while not metadata_queue.empty():
+
+                    try:
+
+                        metadata_batch.append(
+                            metadata_queue.get_nowait()
+                        )
+
+                    except asyncio.QueueEmpty:
+
+                        break
+
+
+                if not position_batch and not metadata_batch:
 
                     print(
                         "Database writer stopped."
@@ -528,13 +666,26 @@ async def database_writer(
 
                 )
 
-                batch.append(
+                position_batch.append(
                     position
                 )
 
             except asyncio.TimeoutError:
 
-                continue
+                pass
+
+
+            while len(metadata_batch) < 1000:
+
+                try:
+
+                    metadata_batch.append(
+                        metadata_queue.get_nowait()
+                    )
+
+                except asyncio.QueueEmpty:
+
+                    break
 
 
         # ----------------------------------------------------
@@ -547,7 +698,7 @@ async def database_writer(
         )
 
 
-        while len(batch) < 1000:
+        while len(position_batch) < 1000:
 
             remaining = (
 
@@ -573,11 +724,24 @@ async def database_writer(
 
                 )
 
-                batch.append(
+                position_batch.append(
                     position
                 )
 
             except asyncio.TimeoutError:
+
+                break
+
+
+        while len(metadata_batch) < 1000:
+
+            try:
+
+                metadata_batch.append(
+                    metadata_queue.get_nowait()
+                )
+
+            except asyncio.QueueEmpty:
 
                 break
 
@@ -588,13 +752,15 @@ async def database_writer(
 
         try:
 
-            save_vessels_batch(
-                batch
+            save_stream_batch(
+                position_batch,
+                metadata_batch,
             )
 
             print(
                 f"Database: saved "
-                f"{len(batch)} positions."
+                f"{len(position_batch)} positions, "
+                f"{len(metadata_batch)} metadata updates."
             )
 
 
@@ -611,8 +777,58 @@ async def database_writer(
 # CONNECT TO PELYR
 # ============================================================
 
+async def subscribe_to_static_ais(ws):
+    """Use the three remaining Pelyr subscription slots for AIS type 5/24."""
+
+    mmsis = get_recent_vessel_mmsis(
+        limit=STATIC_MMSI_LIMIT
+    )
+
+    if not mmsis:
+
+        print(
+            "Static AIS subscriptions skipped: "
+            "no cached MMSIs yet."
+        )
+
+        return
+
+    for index, subscription_id in enumerate(
+        STATIC_SUBSCRIPTION_IDS
+    ):
+
+        start = index * STATIC_BATCH_SIZE
+
+        batch = mmsis[
+            start:start + STATIC_BATCH_SIZE
+        ]
+
+        if not batch:
+
+            break
+
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "subscribe",
+                    "id": subscription_id,
+                    "mmsi": [int(mmsi) for mmsi in batch],
+                    "msg_types": [5, 24],
+                    "include_positionless": True,
+                    "fields": "full",
+                }
+            )
+        )
+
+        print(
+            f"Static subscription sent: {subscription_id} "
+            f"({len(batch)} MMSIs)."
+        )
+
+
 async def stream_connection(
     position_queue,
+    metadata_queue,
     stop_event
 ):
 
@@ -669,6 +885,10 @@ async def stream_connection(
             "Global subscription sent."
         )
 
+        await subscribe_to_static_ais(
+            ws
+        )
+
 
         # ----------------------------------------------------
         # RECEIVE STREAM
@@ -706,7 +926,8 @@ async def stream_connection(
             if frame_type == "subscribed":
 
                 print(
-                    "Subscription confirmed."
+                    "Subscription confirmed:",
+                    frame.get("id")
                 )
 
 
@@ -720,6 +941,23 @@ async def stream_connection(
                     "data",
                     {}
                 )
+
+
+                if data.get("msg_type") in (5, 24):
+
+                    metadata = process_static_metadata(
+                        data
+                    )
+
+
+                    if metadata is not None:
+
+                        await metadata_queue.put(
+                            metadata
+                        )
+
+
+                    continue
 
 
                 vessel = process_position(
@@ -806,6 +1044,10 @@ async def connect_and_stream():
         maxsize=50000
     )
 
+    metadata_queue = asyncio.Queue(
+        maxsize=10000
+    )
+
 
     # --------------------------------------------------------
     # Stop event
@@ -861,6 +1103,8 @@ async def connect_and_stream():
 
             position_queue,
 
+            metadata_queue,
+
             stop_event
 
         )
@@ -881,6 +1125,8 @@ async def connect_and_stream():
                 await stream_connection(
 
                     position_queue,
+
+                    metadata_queue,
 
                     stop_event
 

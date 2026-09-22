@@ -1,0 +1,568 @@
+Database initialized.
+
+Connecting to Pelyr WebSocket...
+Database writer started.
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 7 positions, 0 metadata updates.
+Database: saved 46 positions, 0 metadata updates.
+Database: saved 78 positions, 2 metadata updates.
+Database: saved 158 positions, 9 metadata updates.
+Database: saved 127 positions, 9 metadata updates.
+Database: saved 149 positions, 9 metadata updates.
+Database: saved 168 positions, 7 metadata updates.
+Database: saved 206 positions, 13 metadata updates.
+Database: saved 165 positions, 9 metadata updates.
+Heartbeat received.
+Database: saved 145 positions, 6 metadata updates.
+Database: saved 134 positions, 11 metadata updates.
+Database: saved 113 positions, 6 metadata updates.
+Database: saved 136 positions, 9 metadata updates.
+Database: saved 130 positions, 11 metadata updates.
+Database: saved 145 positions, 10 metadata updates.
+Database: saved 107 positions, 8 metadata updates.
+Database: saved 142 positions, 13 metadata updates.
+Database: saved 251 positions, 20 metadata updates.
+Database: saved 136 positions, 10 metadata updates.
+Heartbeat received.
+Database: saved 137 positions, 14 metadata updates.
+Database: saved 172 positions, 14 metadata updates.
+Database: saved 175 positions, 7 metadata updates.
+Database: saved 150 positions, 13 metadata updates.
+Database: saved 973 positions, 5 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Heartbeat received.
+
+WebSocket connection closed.
+Reconnecting in 13 seconds...
+Database: saved 807 positions, 35 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Database: saved 865 positions, 0 metadata updates.
+Subscription confirmed: static_3
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 99 metadata updates.
+Database: saved 1000 positions, 206 metadata updates.
+Heartbeat received.
+Database: saved 1000 positions, 21 metadata updates.
+
+WebSocket connection closed.
+Reconnecting in 29 seconds...
+Database: saved 70 positions, 0 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 22 positions, 0 metadata updates.
+Database: saved 160 positions, 4 metadata updates.
+Database: saved 199 positions, 10 metadata updates.
+Database: saved 526 positions, 3 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 13 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 12 metadata updates.
+Heartbeat received.
+
+WebSocket connection closed.
+Reconnecting in 14 seconds...
+Database: saved 452 positions, 16 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 9 positions, 0 metadata updates.
+Database: saved 183 positions, 2 metadata updates.
+Database: saved 179 positions, 1 metadata updates.
+Database: saved 318 positions, 4 metadata updates.
+Database: saved 395 positions, 11 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 168 metadata updates.
+Heartbeat received.
+
+WebSocket connection closed.
+Reconnecting in 6 seconds...
+Database: saved 400 positions, 95 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 7 positions, 0 metadata updates.
+Database: saved 200 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Heartbeat received.
+Database: saved 1000 positions, 4 metadata updates.
+
+WebSocket connection closed.
+Reconnecting in 24 seconds...
+Database: saved 227 positions, 0 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 5 positions, 1 metadata updates.
+Database: saved 65 positions, 1 metadata updates.
+Database: saved 65 positions, 3 metadata updates.
+Database: saved 193 positions, 11 metadata updates.
+Database: saved 133 positions, 9 metadata updates.
+Database: saved 230 positions, 3 metadata updates.
+Database: saved 119 positions, 4 metadata updates.
+Database: saved 114 positions, 5 metadata updates.
+Database: saved 227 positions, 8 metadata updates.
+Heartbeat received.
+Database: saved 251 positions, 7 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 6 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 8 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 6 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 5 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 16 metadata updates.
+Database: saved 1000 positions, 45 metadata updates.
+Heartbeat received.
+
+WebSocket connection closed.
+Reconnecting in 28 seconds...
+Database: saved 693 positions, 17 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 6 positions, 0 metadata updates.
+Database: saved 82 positions, 2 metadata updates.
+Database: saved 53 positions, 0 metadata updates.
+Database: saved 15 positions, 1 metadata updates.
+Database: saved 5 positions, 0 metadata updates.
+Database: saved 41 positions, 2 metadata updates.
+Database: saved 23 positions, 1 metadata updates.
+Database: saved 67 positions, 2 metadata updates.
+Database: saved 14 positions, 1 metadata updates.
+Database: saved 11 positions, 2 metadata updates.
+Database: saved 36 positions, 1 metadata updates.
+Database: saved 16 positions, 0 metadata updates.
+Database: saved 32 positions, 4 metadata updates.
+Database: saved 17 positions, 0 metadata updates.
+Database: saved 50 positions, 3 metadata updates.
+Database: saved 14 positions, 0 metadata updates.
+Database: saved 9 positions, 0 metadata updates.
+Database: saved 40 positions, 0 metadata updates.
+Database: saved 15 positions, 0 metadata updates.
+Database: saved 9 positions, 0 metadata updates.
+Database: saved 949 positions, 2 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 7 metadata updates.
+Database: saved 1000 positions, 7 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 7 metadata updates.
+Database: saved 1000 positions, 154 metadata updates.
+Heartbeat received.
+Database: saved 662 positions, 11 metadata updates.
+Database: saved 92 positions, 4 metadata updates.
+Database: saved 52 positions, 0 metadata updates.
+Database: saved 17 positions, 0 metadata updates.
+Database: saved 52 positions, 2 metadata updates.
+Database: saved 41 positions, 1 metadata updates.
+Database: saved 48 positions, 1 metadata updates.
+Database: saved 12 positions, 0 metadata updates.
+Database: saved 35 positions, 3 metadata updates.
+Database: saved 14 positions, 2 metadata updates.
+Database: saved 50 positions, 0 metadata updates.
+Database: saved 15 positions, 0 metadata updates.
+Database: saved 8 positions, 1 metadata updates.
+Database: saved 44 positions, 3 metadata updates.
+Database: saved 6 positions, 0 metadata updates.
+Database: saved 55 positions, 1 metadata updates.
+Database: saved 10 positions, 0 metadata updates.
+Database: saved 6 positions, 0 metadata updates.
+Database: saved 111 positions, 8 metadata updates.
+Database: saved 17 positions, 1 metadata updates.
+Database: saved 58 positions, 1 metadata updates.
+Database: saved 27 positions, 0 metadata updates.
+Database: saved 30 positions, 2 metadata updates.
+Database: saved 14 positions, 0 metadata updates.
+Database: saved 22 positions, 2 metadata updates.
+Database: saved 40 positions, 0 metadata updates.
+Database: saved 33 positions, 2 metadata updates.
+Database: saved 40 positions, 0 metadata updates.
+Database: saved 11 positions, 0 metadata updates.
+Database: saved 40 positions, 1 metadata updates.
+Database: saved 35 positions, 2 metadata updates.
+Database: saved 30 positions, 1 metadata updates.
+Database: saved 14 positions, 1 metadata updates.
+Database: saved 46 positions, 0 metadata updates.
+Database: saved 11 positions, 0 metadata updates.
+Database: saved 51 positions, 2 metadata updates.
+Heartbeat received.
+Database: saved 19 positions, 0 metadata updates.
+Database: saved 55 positions, 1 metadata updates.
+Database: saved 12 positions, 0 metadata updates.
+Database: saved 40 positions, 1 metadata updates.
+Database: saved 75 positions, 18 metadata updates.
+Database: saved 38 positions, 2 metadata updates.
+Database: saved 20 positions, 0 metadata updates.
+Database: saved 42 positions, 0 metadata updates.
+Database: saved 45 positions, 3 metadata updates.
+Database: saved 18 positions, 0 metadata updates.
+Database: saved 29 positions, 1 metadata updates.
+Database: saved 15 positions, 0 metadata updates.
+Database: saved 76 positions, 14 metadata updates.
+Database: saved 13 positions, 0 metadata updates.
+Database: saved 10 positions, 1 metadata updates.
+Database: saved 34 positions, 0 metadata updates.
+Database: saved 24 positions, 1 metadata updates.
+Database: saved 43 positions, 2 metadata updates.
+Database: saved 22 positions, 0 metadata updates.
+Database: saved 33 positions, 1 metadata updates.
+Database: saved 18 positions, 0 metadata updates.
+Database: saved 32 positions, 1 metadata updates.
+Database: saved 17 positions, 1 metadata updates.
+Database: saved 39 positions, 2 metadata updates.
+Database: saved 31 positions, 0 metadata updates.
+Database: saved 6 positions, 1 metadata updates.
+Database: saved 34 positions, 1 metadata updates.
+Database: saved 87 positions, 3 metadata updates.
+Database: saved 60 positions, 1 metadata updates.
+Database: saved 25 positions, 3 metadata updates.
+Database: saved 46 positions, 0 metadata updates.
+Database: saved 16 positions, 0 metadata updates.
+Database: saved 10 positions, 1 metadata updates.
+Database: saved 46 positions, 0 metadata updates.
+Database: saved 7 positions, 0 metadata updates.
+Database: saved 91 positions, 0 metadata updates.
+Database: saved 5 positions, 0 metadata updates.
+Database: saved 42 positions, 2 metadata updates.
+Database: saved 10 positions, 0 metadata updates.
+Database: saved 8 positions, 1 metadata updates.
+Database: saved 37 positions, 1 metadata updates.
+Database: saved 30 positions, 1 metadata updates.
+Database: saved 37 positions, 2 metadata updates.
+Database: saved 13 positions, 1 metadata updates.
+Heartbeat received.
+Database: saved 54 positions, 4 metadata updates.
+Database: saved 12 positions, 0 metadata updates.
+Database: saved 34 positions, 4 metadata updates.
+Database: saved 15 positions, 0 metadata updates.
+Database: saved 43 positions, 0 metadata updates.
+Database: saved 6 positions, 0 metadata updates.
+Database: saved 74 positions, 3 metadata updates.
+Database: saved 42 positions, 1 metadata updates.
+Database: saved 39 positions, 3 metadata updates.
+Database: saved 55 positions, 0 metadata updates.
+Database: saved 12 positions, 0 metadata updates.
+Database: saved 40 positions, 1 metadata updates.
+Database: saved 15 positions, 2 metadata updates.
+Database: saved 64 positions, 2 metadata updates.
+Database: saved 11 positions, 0 metadata updates.
+Database: saved 33 positions, 2 metadata updates.
+Database: saved 7 positions, 2 metadata updates.
+Database: saved 54 positions, 1 metadata updates.
+Database: saved 11 positions, 0 metadata updates.
+Database: saved 9 positions, 0 metadata updates.
+Database: saved 54 positions, 0 metadata updates.
+Database: saved 511 positions, 2 metadata updates.
+Database: saved 979 positions, 1 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 3 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 4 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 51 metadata updates.
+Heartbeat received.
+Database: saved 629 positions, 9 metadata updates.
+Database: saved 244 positions, 15 metadata updates.
+Database: saved 43 positions, 0 metadata updates.
+Database: saved 14 positions, 1 metadata updates.
+Database: saved 51 positions, 0 metadata updates.
+Database: saved 9 positions, 0 metadata updates.
+Database: saved 68 positions, 4 metadata updates.
+Database: saved 8 positions, 0 metadata updates.
+Database: saved 11 positions, 1 metadata updates.
+Database: saved 11 positions, 0 metadata updates.
+Database: saved 5 positions, 0 metadata updates.
+Database: saved 10 positions, 0 metadata updates.
+Database: saved 9 positions, 0 metadata updates.
+Database: saved 13 positions, 0 metadata updates.
+Database: saved 10 positions, 0 metadata updates.
+Database: saved 5 positions, 0 metadata updates.
+Database: saved 4 positions, 0 metadata updates.
+Database: saved 13 positions, 0 metadata updates.
+Database: saved 11 positions, 0 metadata updates.
+Database: saved 36 positions, 0 metadata updates.
+Heartbeat received.
+
+WebSocket connection closed.
+Reconnecting in 28 seconds...
+Database: saved 734 positions, 27 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 40 positions, 1 metadata updates.
+Database: saved 121 positions, 6 metadata updates.
+Database: saved 321 positions, 32 metadata updates.
+Database: saved 300 positions, 10 metadata updates.
+Database: saved 931 positions, 14 metadata updates.
+Database: saved 997 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Heartbeat received.
+
+WebSocket connection closed.
+Reconnecting in 6 seconds...
+Database: saved 759 positions, 17 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Database: saved 613 positions, 0 metadata updates.
+Subscription confirmed: static_3
+Database: saved 249 positions, 1 metadata updates.
+Database: saved 420 positions, 5 metadata updates.
+Heartbeat received.
+Database: saved 306 positions, 6 metadata updates.
+Database: saved 451 positions, 4 metadata updates.
+Database: saved 305 positions, 5 metadata updates.
+Database: saved 345 positions, 4 metadata updates.
+Heartbeat received.
+Database: saved 213 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Pelyr notice: {'type': 'notice', 'code': 'slow_consumer_warning', 'message': "dropping frames: 4953 lost in this window; the connection closes at 1000 in this window (a separate, per-window count from the heartbeat's cumulative 'dropped'). Narrow your subscription or use 'fields':'position'."}
+Pelyr stream error: {'type': 'error', 'code': 'slow_consumer', 'message': 'consumer too slow: 4953 messages dropped; narrow your filter', 'fatal': True}
+
+WebSocket connection closed.
+Reconnecting in 7 seconds...
+Database: saved 977 positions, 0 metadata updates.
+
+Connecting to Pelyr WebSocket...
+Connected to Pelyr.
+Pelyr welcome received.
+Global subscription sent.
+Static subscription sent: static_1 (500 MMSIs).
+Static subscription sent: static_2 (500 MMSIs).
+Static subscription sent: static_3 (500 MMSIs).
+Subscription confirmed: global
+Subscription confirmed: static_1
+Subscription confirmed: static_2
+Subscription confirmed: static_3
+Database: saved 24 positions, 0 metadata updates.
+Database: saved 198 positions, 0 metadata updates.
+Database: saved 172 positions, 0 metadata updates.
+Database: saved 180 positions, 0 metadata updates.
+Database: saved 104 positions, 0 metadata updates.
+Database: saved 273 positions, 0 metadata updates.
+Database: saved 173 positions, 0 metadata updates.
+Database: saved 212 positions, 0 metadata updates.
+Heartbeat received.
+Database: saved 290 positions, 1 metadata updates.
+Database: saved 223 positions, 0 metadata updates.
+Database: saved 207 positions, 1 metadata updates.
+Database: saved 219 positions, 0 metadata updates.
+Database: saved 309 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 2 metadata updates.
+Database: saved 1000 positions, 1 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.
+Database: saved 1000 positions, 0 metadata updates.

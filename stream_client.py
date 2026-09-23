@@ -114,6 +114,28 @@ validation_stats = {
     "rejected_jump": 0
 }
 
+HEARTBEAT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "stream_heartbeat.json")
+
+
+def write_heartbeat(status="streaming"):
+    """Write ingestion liveness heartbeat for container and orchestrator monitoring."""
+    try:
+        os.makedirs(os.path.dirname(HEARTBEAT_PATH), exist_ok=True)
+        payload = {
+            "status": status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "pid": os.getpid(),
+            "accepted": validation_stats["accepted"],
+            "rejected_missing": validation_stats["rejected_missing"],
+            "rejected_coordinates": validation_stats["rejected_coordinates"],
+            "rejected_timestamp": validation_stats["rejected_timestamp"],
+            "rejected_jump": validation_stats["rejected_jump"],
+        }
+        with open(HEARTBEAT_PATH, "w", encoding="utf-8") as file:
+            json.dump(payload, file)
+    except Exception:
+        pass
+
 
 # ============================================================
 # DISTANCE / SPEED HELPERS
@@ -756,6 +778,7 @@ async def database_writer(
                 position_batch,
                 metadata_batch,
             )
+            write_heartbeat("streaming")
 
             print(
                 f"Database: saved "
@@ -1302,6 +1325,7 @@ async def connect_and_stream():
         print(
             "Shutdown complete."
         )
+        write_heartbeat("stopped")
 
 
 # ============================================================

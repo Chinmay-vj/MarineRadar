@@ -1,9 +1,14 @@
+import json
+import os
+import time
 from pathlib import Path
 from datetime import datetime, timedelta
 from math import asin, cos, radians, sin, sqrt
 from fastapi.responses import FileResponse, RedirectResponse
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from database import (
     initialize_database,
@@ -44,9 +49,24 @@ from postgres_backend import find_vessels_nearby, postgres_dsn
 
 app = FastAPI(
     title="Global Ship Tracker Map API",
-    description="API layer between SQLite and the live Leaflet map.",
+    description="API layer between SQLite/PostGIS and the live Leaflet map.",
     version="1.0.0"
 )
+
+cors_origins_env = os.getenv("CORS_ORIGINS", "*")
+allowed_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins if allowed_origins else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+APP_START_TIME = time.time()
 
 # ============================================================
 # FRONTEND
@@ -186,14 +206,38 @@ def infer_route(history):
 # HEALTH CHECK
 # ============================================================
 
+HEARTBEAT_FILE = BASE_DIR / "data" / "stream_heartbeat.json"
+
+
 @app.get("/health")
 def health_check():
+    dsn = postgres_dsn()
+    pg_info = None
+    if dsn:
+        try:
+            from postgres_backend import check_postgres_health
+            pg_info = check_postgres_health(dsn)
+        except Exception as error:
+            pg_info = {"status": "error", "error": str(error)}
+
+    ingestion_heartbeat = None
+    if HEARTBEAT_FILE.exists():
+        try:
+            ingestion_heartbeat = json.loads(HEARTBEAT_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
 
     return {
         "status": "ok",
         "service": "Global Ship Tracker Map API",
-        "database": "PostgreSQL/PostGIS" if postgres_dsn() else "SQLite",
-        "postgis_configured": bool(postgres_dsn()),
+        "version": "1.0.0",
+        "uptime_seconds": round(time.time() - APP_START_TIME, 1),
+        "database": {
+            "engine": "PostgreSQL/PostGIS" if dsn else "SQLite",
+            "postgis_configured": bool(dsn),
+            "postgres_health": pg_info,
+        },
+        "ingestion": ingestion_heartbeat or {"status": "no_heartbeat_recorded"},
     }
 
 

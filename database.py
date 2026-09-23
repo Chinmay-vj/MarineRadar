@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from math import floor
 from pathlib import Path
 
+from postgres_backend import postgres_dsn
+
 
 # ============================================================
 # DATABASE CONFIGURATION
@@ -41,6 +43,15 @@ def get_connection():
 # ============================================================
 
 def initialize_database():
+
+    if postgres_dsn():
+        try:
+            from postgres_backend import _require_driver, initialize_postgres
+            psycopg = _require_driver()
+            with psycopg.connect(postgres_dsn()) as pg_conn:
+                initialize_postgres(pg_conn)
+        except Exception as error:
+            print(f"Warning: PostgreSQL schema initialization: {error}")
 
     DATA_DIR.mkdir(
         exist_ok=True
@@ -245,6 +256,9 @@ def initialize_database():
 
 def sync_maritime_alerts(alert_records, observed_at=None):
     """Upsert current anomalies and resolve active alerts that disappeared."""
+    if postgres_dsn():
+        from postgres_backend import sync_maritime_alerts_postgres
+        return sync_maritime_alerts_postgres(alert_records, observed_at=observed_at)
     observed_at = observed_at or datetime.now(timezone.utc).isoformat()
     connection = get_connection()
     try:
@@ -309,6 +323,9 @@ def sync_maritime_alerts(alert_records, observed_at=None):
 
 
 def get_maritime_alerts(status="active", limit=100, severity=None):
+    if postgres_dsn():
+        from postgres_backend import get_maritime_alerts_postgres
+        return get_maritime_alerts_postgres(status=status, limit=limit, severity=severity)
     connection = get_connection()
     try:
         clauses = []
@@ -337,6 +354,9 @@ def get_maritime_alerts(status="active", limit=100, severity=None):
 
 
 def acknowledge_maritime_alert(alert_id):
+    if postgres_dsn():
+        from postgres_backend import acknowledge_maritime_alert_postgres
+        return acknowledge_maritime_alert_postgres(alert_id)
     connection = get_connection()
     try:
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -473,6 +493,10 @@ def save_vessels_batch(positions):
 
     if not positions:
         return
+
+    if postgres_dsn():
+        from postgres_backend import save_stream_batch_postgres
+        return save_stream_batch_postgres(positions, [])
 
 
     connection = get_connection()
@@ -734,6 +758,10 @@ def save_vessel_metadata_batch(metadata_records):
     if not metadata_records:
         return
 
+    if postgres_dsn():
+        from postgres_backend import save_stream_batch_postgres
+        return save_stream_batch_postgres([], metadata_records)
+
     connection = get_connection()
 
     try:
@@ -758,6 +786,9 @@ def save_vessel_metadata_batch(metadata_records):
 
 def save_stream_batch(positions, metadata_records):
     """Persist position and static AIS update groups through one writer."""
+    if postgres_dsn():
+        from postgres_backend import save_stream_batch_postgres
+        return save_stream_batch_postgres(positions, metadata_records)
 
     if positions:
         save_vessels_batch(positions)
@@ -771,6 +802,10 @@ def save_stream_batch(positions, metadata_records):
 # ============================================================
 
 def get_current_vessels(limit=100):
+
+    if postgres_dsn():
+        from postgres_backend import get_current_vessels_postgres
+        return get_current_vessels_postgres(limit=limit)
 
     connection = get_connection()
 
@@ -849,6 +884,9 @@ def get_current_vessels(limit=100):
 # ============================================================
 
 def get_vessel(mmsi):
+    if postgres_dsn():
+        from postgres_backend import get_vessel_postgres
+        return get_vessel_postgres(mmsi)
     connection = get_connection()
 
     try:
@@ -883,6 +921,10 @@ def get_vessel(mmsi):
 # ============================================================
 
 def get_recent_vessel_mmsis(limit=1500):
+
+    if postgres_dsn():
+        from postgres_backend import get_recent_vessel_mmsis_postgres
+        return get_recent_vessel_mmsis_postgres(limit=limit)
 
     connection = get_connection()
 
@@ -925,6 +967,9 @@ def get_vessel_histories(
 
         return {}
 
+    if postgres_dsn():
+        from postgres_backend import get_vessel_histories_postgres
+        return get_vessel_histories_postgres(mmsis, limit=limit)
 
     connection = get_connection()
 
@@ -1090,6 +1135,14 @@ def get_traffic_density(
     max_points=50000
 ):
 
+    if postgres_dsn():
+        from postgres_backend import get_traffic_density_postgres
+        return get_traffic_density_postgres(
+            hours=hours,
+            grid_size=grid_size,
+            max_points=max_points,
+        )
+
     cutoff = (
         datetime.now(timezone.utc)
         - timedelta(hours=hours)
@@ -1173,6 +1226,10 @@ def get_traffic_density(
 
 def get_destination_analysis():
 
+    if postgres_dsn():
+        from postgres_backend import get_destination_analysis_postgres
+        return get_destination_analysis_postgres()
+
     connection = get_connection()
 
     try:
@@ -1210,6 +1267,10 @@ def get_vessel_history(
     mmsi,
     limit=20
 ):
+
+    if postgres_dsn():
+        from postgres_backend import get_vessel_history_postgres
+        return get_vessel_history_postgres(mmsi, limit=limit)
 
     connection = get_connection()
 

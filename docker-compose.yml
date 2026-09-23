@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: marineradar_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-marineradar}
+      POSTGRES_USER: ${POSTGRES_USER:-marineradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marineradar_secret}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-marineradar} -d ${POSTGRES_DB:-marineradar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: marineradar_api
+    restart: unless-stopped
+    command: ["uvicorn", "map_server:app", "--host", "0.0.0.0", "--port", "8502", "--workers", "2"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-marineradar}:${POSTGRES_PASSWORD:-marineradar_secret}@db:5432/${POSTGRES_DB:-marineradar}
+      PORT: 8502
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    ports:
+      - "${PORT:-8502}:8502"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - appdata:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8502/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: marineradar_ingest
+    restart: unless-stopped
+    command: ["python", "stream_client.py"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-marineradar}:${POSTGRES_PASSWORD:-marineradar_secret}@db:5432/${POSTGRES_DB:-marineradar}
+      PELYR_API_KEY: ${PELYR_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - appdata:/app/data
+
+volumes:
+  pgdata:
+    driver: local
+  appdata:
+    driver: local

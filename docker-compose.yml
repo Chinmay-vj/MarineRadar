@@ -52,7 +52,8 @@ services:
     command: ["python", "stream_client.py"]
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-marineradar}:${POSTGRES_PASSWORD:-marineradar_secret}@db:5432/${POSTGRES_DB:-marineradar}
-      PELYR_API_KEY: ${PELYR_API_KEY}
+      AISSTREAM_API_KEY: ${AISSTREAM_API_KEY}
+      AISSTREAM_BOUNDING_BOXES: ${AISSTREAM_BOUNDING_BOXES:-}
     depends_on:
       db:
         condition: service_healthy

@@ -1,57 +1,33 @@
-import os
-import requests
+"""Run a short AISStream connection check without writing to the database."""
+
+import asyncio
+import json
+
+import websockets
 from dotenv import load_dotenv
 
-load_dotenv()
+from stream_client import AISSTREAM_POSITION_TYPES, WS_URL, get_subscription
 
-API_KEY = os.getenv("PELYR_API_KEY")
 
-url = "https://api.pelyr.com/v1/vessels"
+async def run_live_check():
+    load_dotenv()
+    subscription = get_subscription()
+    received = 0
 
-params = {
-    "bbox": "-180,-85,180,85",
-    "max": 100
-}
+    async with websockets.connect(WS_URL, compression="deflate") as ws:
+        await ws.send(json.dumps(subscription))
 
-headers = {
-    "Authorization": f"Bearer {API_KEY}"
-}
+        async for raw in ws:
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            event = json.loads(raw)
 
-def run_live_check():
-
-    response = requests.get(
-        url,
-        params=params,
-        headers=headers,
-        timeout=10
-    )
-
-    print("Status:", response.status_code)
-
-    if response.status_code == 200:
-        data = response.json()
-
-        print("Number of vessels:", data.get("count"))
-
-        for vessel in data.get("vessels", [])[:10]:
-
-            position = vessel.get("position", {})
-            static = vessel.get("static", {})
-
-            print("\n--------------------")
-            print("Name:", static.get("name"))
-            print("MMSI:", vessel.get("mmsi"))
-            print("IMO:", static.get("imo"))
-            print("Latitude:", position.get("lat"))
-            print("Longitude:", position.get("lon"))
-            print("Speed:", position.get("sog"))
-            print("Course:", position.get("cog"))
-            print("Destination:", static.get("dest"))
-
-    else:
-        print("Error:")
-        print(response.text)
+            if event.get("MessageType") in AISSTREAM_POSITION_TYPES:
+                received += 1
+                if received == 10:
+                    print("AISStream key verified: received 10 position events.")
+                    return
 
 
 if __name__ == "__main__":
-    run_live_check()
+    asyncio.run(run_live_check())

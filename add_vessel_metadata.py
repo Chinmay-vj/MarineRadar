@@ -173,7 +173,7 @@ def main():
             "No existing vessel-position/history records were modified."
         )
         print(
-            "The metadata table is ready for the Pelyr static AIS stream."
+            "The metadata table is ready for the AISStream static AIS feed."
         )
 
 

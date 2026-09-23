@@ -1,6 +1,7 @@
 """Optional PostgreSQL/PostGIS migration and spatial access layer for Phase 19/20."""
 
 import os
+import re
 import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
@@ -64,7 +65,27 @@ def check_postgres_health(dsn=None):
 def _timestamp(value):
     if not value:
         return None
-    return value.replace("Z", "+00:00") if isinstance(value, str) else value
+    if not isinstance(value, str):
+        return value
+
+    normalized = value.strip().replace("Z", "+00:00")
+
+    # AISStream timestamps include a trailing `UTC` and may provide more
+    # than six fractional-second digits. Convert them to a Python datetime so
+    # psycopg passes a native, PostgreSQL-safe timestamptz value.
+    if normalized.endswith(" UTC"):
+        normalized = normalized[:-4].strip()
+
+    normalized = re.sub(
+        r"\.(\d{6})\d+(?=\s*[+-]\d{2}:?\d{2}$)",
+        r".\1",
+        normalized,
+    )
+
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return normalized
 
 
 def migrate_sqlite_to_postgres(sqlite_path, dsn=None, batch_size=1000):

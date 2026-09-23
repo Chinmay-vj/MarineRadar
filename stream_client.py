@@ -10,7 +10,6 @@ import websockets
 from dotenv import load_dotenv
 
 from database import (
-    get_recent_vessel_mmsis,
     initialize_database,
     save_stream_batch
 )
@@ -22,18 +21,23 @@ from database import (
 
 load_dotenv()
 
-API_KEY = os.getenv(
-    "PELYR_API_KEY"
-)
+API_KEY = os.getenv("AISSTREAM_API_KEY")
 
-if not API_KEY:
-    raise RuntimeError(
-        "PELYR_API_KEY not found in .env"
-    )
+WS_URL = "wss://stream.aisstream.io/v0/stream"
 
-
-WS_URL = (
-    "wss://stream.pelyr.com/v1/stream"
+# AISStream requires at least one [latitude, longitude] bounding-box pair.
+# Keep the historical global coverage by default, but allow deployments to
+# narrow the scope (and therefore bandwidth) without code changes.
+DEFAULT_BOUNDING_BOXES = [[[-85.0, -180.0], [85.0, 180.0]]]
+AISSTREAM_POSITION_TYPES = {
+    "PositionReport",
+    "StandardClassBPositionReport",
+    "ExtendedClassBPositionReport",
+    "LongRangeAisBroadcastMessage",
+}
+AISSTREAM_STATIC_TYPES = {"ShipStaticData", "StaticDataReport"}
+AISSTREAM_MESSAGE_TYPES = sorted(
+    AISSTREAM_POSITION_TYPES | AISSTREAM_STATIC_TYPES
 )
 
 
@@ -56,41 +60,32 @@ MAX_IMPLIED_SPEED_KNOTS = 50.0
 
 
 # ============================================================
-# GLOBAL SUBSCRIPTION
+# AISSTREAM SUBSCRIPTION
 # ============================================================
 
-SUBSCRIPTION = {
+def get_subscription():
+    """Build one complete AISStream subscription from server-side config."""
 
-    "type": "subscribe",
+    raw_bounding_boxes = os.getenv("AISSTREAM_BOUNDING_BOXES")
+    bounding_boxes = DEFAULT_BOUNDING_BOXES
 
-    "id": "global",
+    if raw_bounding_boxes:
+        try:
+            bounding_boxes = json.loads(raw_bounding_boxes)
+        except json.JSONDecodeError as error:
+            raise RuntimeError(
+                "AISSTREAM_BOUNDING_BOXES must be valid JSON, for example "
+                "[[[25.835, -80.208], [25.603, -79.879]]]."
+            ) from error
 
-    "bbox": [
+    if not API_KEY:
+        raise RuntimeError("AISSTREAM_API_KEY is required for live AIS ingestion.")
 
-        {
-            "west": -180,
-            "south": -85,
-            "east": 180,
-            "north": 85
-        }
-
-    ],
-
-    "fields": "position"
-}
-
-
-# Pelyr permits four subscriptions per connection.  The global
-# position stream uses one slot; the remaining three cover the most
-# recently observed vessels for static AIS type 5/24 updates.
-STATIC_SUBSCRIPTION_IDS = [
-    "static_1",
-    "static_2",
-    "static_3",
-]
-
-STATIC_BATCH_SIZE = 500
-STATIC_MMSI_LIMIT = 1500
+    return {
+        "APIKey": API_KEY,
+        "BoundingBoxes": bounding_boxes,
+        "FilterMessageTypes": AISSTREAM_MESSAGE_TYPES,
+    }
 
 
 # ============================================================
@@ -212,6 +207,145 @@ def implied_speed_knots(
     )
 
 
+def parse_ais_timestamp(timestamp):
+    """Parse the ISO-like timestamp supplied in AISStream MetaData."""
+
+    if timestamp is None:
+        raise ValueError("Missing AIS timestamp")
+
+    value = str(timestamp).strip().replace("Z", "+00:00")
+
+    # AISStream examples use a nanosecond timestamp followed by `UTC`, which
+    # Python's ISO parser does not accept directly.
+    if value.endswith(" UTC"):
+        value = value[:-4].strip()
+
+    parsed = datetime.fromisoformat(value)
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
+
+
+def aisstream_message(event):
+    """Return the typed AISStream payload and its normalized metadata."""
+
+    message_type = event.get("MessageType")
+    message = event.get("Message") or {}
+    metadata = event.get("MetaData") or {}
+
+    if not isinstance(message, dict) or not isinstance(metadata, dict):
+        return message_type, {}, {}
+
+    payload = message.get(message_type) or {}
+    return message_type, payload, metadata
+
+
+def metadata_value(metadata, *names):
+    """Read a field regardless of the casing used by AISStream metadata."""
+
+    for name in names:
+        value = metadata.get(name)
+        if value is not None:
+            return value
+
+    return None
+
+
+def first_present(*values):
+    """Return the first value that is present, preserving valid zeroes."""
+
+    for value in values:
+        if value is not None:
+            return value
+
+    return None
+
+
+def normalize_aisstream_position(event):
+    """Map an AISStream position envelope into the tracker's internal shape."""
+
+    message_type, payload, metadata = aisstream_message(event)
+
+    if message_type not in AISSTREAM_POSITION_TYPES or not isinstance(payload, dict):
+        return None
+
+    return {
+        "mmsi": first_present(payload.get("UserID"), metadata_value(metadata, "MMSI", "mmsi")),
+        "lat": first_present(payload.get("Latitude"), metadata_value(metadata, "Latitude", "latitude")),
+        "lon": first_present(payload.get("Longitude"), metadata_value(metadata, "Longitude", "longitude")),
+        "sog": payload.get("Sog"),
+        "cog": payload.get("Cog"),
+        "heading": payload.get("TrueHeading"),
+        "rx_ts": metadata_value(metadata, "time_utc", "TimeUTC", "Timestamp"),
+    }
+
+
+def format_aisstream_eta(payload):
+    """Turn AIS type-5 ETA fields into the MMDDHHMM form used by analytics."""
+
+    eta = first_present(payload.get("Eta"), payload.get("ETA"))
+    if isinstance(eta, str):
+        return eta
+
+    source = eta if isinstance(eta, dict) else payload
+    month = first_present(source.get("Month"), source.get("ETAMonth"))
+    day = first_present(source.get("Day"), source.get("ETADay"))
+    hour = first_present(source.get("Hour"), source.get("ETAHour"))
+    minute = first_present(source.get("Minute"), source.get("ETAMinute"))
+
+    try:
+        values = [int(month), int(day), int(hour), int(minute)]
+    except (TypeError, ValueError):
+        return None
+
+    if not (1 <= values[0] <= 12 and 1 <= values[1] <= 31 and 0 <= values[2] <= 23 and 0 <= values[3] <= 59):
+        return None
+
+    return f"{values[0]:02d}{values[1]:02d}{values[2]:02d}{values[3]:02d}"
+
+
+def normalize_aisstream_static(event):
+    """Map AISStream type-5/type-24 envelopes into mergeable vessel metadata."""
+
+    message_type, payload, metadata = aisstream_message(event)
+
+    if (
+        message_type not in AISSTREAM_STATIC_TYPES | {"ExtendedClassBPositionReport"}
+        or not isinstance(payload, dict)
+    ):
+        return None
+
+    report_a = payload.get("ReportA") or {}
+    report_b = payload.get("ReportB") or {}
+    if not isinstance(report_a, dict):
+        report_a = {}
+    if not isinstance(report_b, dict):
+        report_b = {}
+
+    dimensions = first_present(report_b.get("Dimension"), payload.get("Dimension")) or {}
+    if not isinstance(dimensions, dict):
+        dimensions = {}
+
+    return {
+        "mmsi": first_present(payload.get("UserID"), metadata_value(metadata, "MMSI", "mmsi")),
+        "imo": first_present(payload.get("ImoNumber"), payload.get("IMONumber")),
+        "shipname": first_present(report_a.get("Name"), payload.get("Name"), metadata_value(metadata, "ShipName")),
+        "callsign": first_present(report_b.get("CallSign"), payload.get("CallSign")),
+        "shiptype": first_present(report_b.get("ShipType"), payload.get("Type"), payload.get("ShipType")),
+        "destination": payload.get("Destination"),
+        "draught": first_present(payload.get("MaximumStaticDraught"), payload.get("Draught")),
+        "eta": format_aisstream_eta(payload),
+        "dim_a": first_present(dimensions.get("A"), dimensions.get("DimensionToBow"), payload.get("DimensionToBow")),
+        "dim_b": first_present(dimensions.get("B"), dimensions.get("DimensionToStern"), payload.get("DimensionToStern")),
+        "dim_c": first_present(dimensions.get("C"), dimensions.get("DimensionToPort"), payload.get("DimensionToPort")),
+        "dim_d": first_present(dimensions.get("D"), dimensions.get("DimensionToStarboard"), payload.get("DimensionToStarboard")),
+        "rx_ts": metadata_value(metadata, "time_utc", "TimeUTC", "Timestamp"),
+        "_source": "aisstream",
+    }
+
+
 # ============================================================
 # PROCESS AIS POSITION
 # ============================================================
@@ -329,12 +463,7 @@ def process_position(data):
 
     try:
 
-        parsed_timestamp = datetime.fromisoformat(
-            str(timestamp).replace(
-                "Z",
-                "+00:00"
-            )
-        )
+        parsed_timestamp = parse_ais_timestamp(timestamp)
 
     except (
         TypeError,
@@ -347,22 +476,6 @@ def process_position(data):
 
 
     # --------------------------------------------------------
-    # Normalize timestamp to UTC
-    # --------------------------------------------------------
-
-    if parsed_timestamp.tzinfo is None:
-
-        parsed_timestamp = parsed_timestamp.replace(
-            tzinfo=timezone.utc
-        )
-
-    else:
-
-        parsed_timestamp = parsed_timestamp.astimezone(
-            timezone.utc
-        )
-
-
     normalized_timestamp = (
         parsed_timestamp.isoformat()
     )
@@ -529,6 +642,15 @@ def optional_number(value):
     return number if math.isfinite(number) else None
 
 
+def optional_ais_timestamp(value):
+    """Return a PostgreSQL-safe UTC timestamp, or omit an invalid source time."""
+
+    try:
+        return parse_ais_timestamp(value).isoformat()
+    except (TypeError, ValueError):
+        return None
+
+
 def process_static_metadata(data):
     """Normalize an AIS type-5/type-24 record for field-wise merging."""
 
@@ -575,8 +697,8 @@ def process_static_metadata(data):
         "dim_d": dim_d,
         "length": length,
         "beam": beam,
-        "last_static_update": clean_metadata_value(data.get("rx_ts")),
-        "static_source": "pelyr_stream",
+        "last_static_update": optional_ais_timestamp(data.get("rx_ts")),
+        "static_source": data.get("_source", "aisstream"),
     }
 
     if not any(
@@ -797,57 +919,8 @@ async def database_writer(
 
 
 # ============================================================
-# CONNECT TO PELYR
+# CONNECT TO AISSTREAM
 # ============================================================
-
-async def subscribe_to_static_ais(ws):
-    """Use the three remaining Pelyr subscription slots for AIS type 5/24."""
-
-    mmsis = get_recent_vessel_mmsis(
-        limit=STATIC_MMSI_LIMIT
-    )
-
-    if not mmsis:
-
-        print(
-            "Static AIS subscriptions skipped: "
-            "no cached MMSIs yet."
-        )
-
-        return
-
-    for index, subscription_id in enumerate(
-        STATIC_SUBSCRIPTION_IDS
-    ):
-
-        start = index * STATIC_BATCH_SIZE
-
-        batch = mmsis[
-            start:start + STATIC_BATCH_SIZE
-        ]
-
-        if not batch:
-
-            break
-
-        await ws.send(
-            json.dumps(
-                {
-                    "type": "subscribe",
-                    "id": subscription_id,
-                    "mmsi": [int(mmsi) for mmsi in batch],
-                    "msg_types": [5, 24],
-                    "include_positionless": True,
-                    "fields": "full",
-                }
-            )
-        )
-
-        print(
-            f"Static subscription sent: {subscription_id} "
-            f"({len(batch)} MMSIs)."
-        )
-
 
 async def stream_connection(
     position_queue,
@@ -856,40 +929,21 @@ async def stream_connection(
 ):
 
     print(
-        "\nConnecting to Pelyr WebSocket..."
+        "\nConnecting to AISStream WebSocket..."
     )
 
 
     async with websockets.connect(
 
         WS_URL,
-
-        additional_headers={
-            "Authorization":
-            f"Bearer {API_KEY}"
-        },
-
-        ping_interval=None
+        compression="deflate",
+        ping_interval=20,
+        ping_timeout=20,
 
     ) as ws:
 
         print(
-            "Connected to Pelyr."
-        )
-
-
-        # ----------------------------------------------------
-        # RECEIVE WELCOME
-        # ----------------------------------------------------
-
-        raw = await ws.recv()
-
-        welcome = json.loads(
-            raw
-        )
-
-        print(
-            "Pelyr welcome received."
+            "Connected to AISStream."
         )
 
 
@@ -899,17 +953,13 @@ async def stream_connection(
 
         await ws.send(
             json.dumps(
-                SUBSCRIPTION
+                get_subscription()
             )
         )
 
 
         print(
-            "Global subscription sent."
-        )
-
-        await subscribe_to_static_ais(
-            ws
+            "AISStream subscription sent."
         )
 
 
@@ -932,59 +982,55 @@ async def stream_connection(
                 break
 
 
-            frame = json.loads(
-                raw
-            )
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
 
+            frame = json.loads(raw)
 
-            frame_type = frame.get(
-                "type"
-            )
+            frame_type = frame.get("MessageType")
 
 
             # =================================================
-            # SUBSCRIBED
+            # SUBSCRIPTION CONFIRMATION
             # =================================================
 
-            if frame_type == "subscribed":
+            if frame_type == "SubscriptionConfirmation":
 
                 print(
                     "Subscription confirmed:",
-                    frame.get("id")
+                    frame.get("Message", {}).get("CompressionEnabled")
                 )
+
+
+            # =================================================
+            # STATIC / VOYAGE METADATA
+            # =================================================
+
+            elif frame_type in AISSTREAM_STATIC_TYPES:
+
+                metadata = process_static_metadata(
+                    normalize_aisstream_static(frame) or {}
+                )
+
+                if metadata is not None:
+                    await metadata_queue.put(metadata)
 
 
             # =================================================
             # POSITION
             # =================================================
 
-            elif frame_type == "position":
+            elif frame_type in AISSTREAM_POSITION_TYPES:
 
-                data = frame.get(
-                    "data",
-                    {}
-                )
-
-
-                if data.get("msg_type") in (5, 24):
-
+                if frame_type == "ExtendedClassBPositionReport":
                     metadata = process_static_metadata(
-                        data
+                        normalize_aisstream_static(frame) or {}
                     )
-
-
                     if metadata is not None:
-
-                        await metadata_queue.put(
-                            metadata
-                        )
-
-
-                    continue
-
+                        await metadata_queue.put(metadata)
 
                 vessel = process_position(
-                    data
+                    normalize_aisstream_position(frame) or {}
                 )
 
 
@@ -1006,42 +1052,6 @@ async def stream_connection(
 
 
             # =================================================
-            # HEARTBEAT
-            # =================================================
-
-            elif frame_type == "heartbeat":
-
-                print(
-                    "Heartbeat received."
-                )
-
-
-            # =================================================
-            # NOTICE
-            # =================================================
-
-            elif frame_type == "notice":
-
-                print(
-                    "Pelyr notice:",
-                    frame
-                )
-
-
-            # =================================================
-            # ERROR
-            # =================================================
-
-            elif frame_type == "error":
-
-                print(
-                    "Pelyr stream error:",
-                    frame
-                )
-
-                break
-
-
 # ============================================================
 # MAIN STREAM MANAGER
 # ============================================================

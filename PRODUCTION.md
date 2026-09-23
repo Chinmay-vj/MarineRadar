@@ -10,7 +10,7 @@ The production platform runs as a coordinated multi-container Docker Compose sta
 
 ```
                           ┌──────────────────────────┐
-                          │   Pelyr AIS Cloud Feed   │
+                          │    AISStream.io Feed     │
                           └─────────────┬────────────┘
                                         │ (WSS)
                                         ▼
@@ -47,7 +47,7 @@ The production platform runs as a coordinated multi-container Docker Compose sta
 ## 2. Prerequisites
 
 - **Docker**: Engine version 24.0+ and Docker Compose v2.20+
-- **Pelyr API Key**: Active subscription token for `wss://stream.pelyr.com/v1/stream`
+- **AISStream API Key**: Active key for `wss://stream.aisstream.io/v0/stream`
 - **Network**: Outbound WebSocket access on port 443; inbound port 8502 (or reverse proxy port 80/443).
 
 ---
@@ -58,10 +58,16 @@ The production platform runs as a coordinated multi-container Docker Compose sta
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and fill in your `PELYR_API_KEY` and a strong `POSTGRES_PASSWORD`:
+Edit `.env` and fill in your `AISSTREAM_API_KEY` and a strong `POSTGRES_PASSWORD`:
 ```bash
-PELYR_API_KEY=your_actual_api_key_here
+AISSTREAM_API_KEY=your_actual_api_key_here
 POSTGRES_PASSWORD=your_secure_password_here
+```
+
+AISStream requires geographic bounding boxes. The default is global coverage;
+for a smaller, lower-volume deployment, set `AISSTREAM_BOUNDING_BOXES` as JSON:
+```bash
+AISSTREAM_BOUNDING_BOXES=[[[25.835,-80.208],[25.603,-79.879]]]
 ```
 
 ### Step 2: Start the Production Stack

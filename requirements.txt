@@ -4,6 +4,7 @@ streamlit-folium
 pandas
 requests
 python-dotenv
+psycopg[binary]
 fastapi
 uvicorn
 websockets

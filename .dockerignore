@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.pyc
+.env
+data/*.db
+data/*.db-shm
+data/*.db-wal
+stream_live.log
+stream_live_err.log
+map_server.log
+map_server_err.log

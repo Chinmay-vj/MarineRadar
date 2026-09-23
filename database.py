@@ -139,6 +139,38 @@ def initialize_database():
         """
     )
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS maritime_alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mmsi TEXT NOT NULL,
+            code TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            evidence TEXT NOT NULL,
+            source TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            acknowledged_at TEXT
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_maritime_alert_active
+        ON maritime_alerts (mmsi, code)
+        WHERE status = 'active'
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_maritime_alert_status_seen
+        ON maritime_alerts (status, last_seen)
+        """
+    )
+
 
     # --------------------------------------------------------
     # PREVENT DUPLICATE AIS POSITIONS
@@ -209,6 +241,117 @@ def initialize_database():
     connection.commit()
 
     connection.close()
+
+
+def sync_maritime_alerts(alert_records, observed_at=None):
+    """Upsert current anomalies and resolve active alerts that disappeared."""
+    observed_at = observed_at or datetime.now(timezone.utc).isoformat()
+    connection = get_connection()
+    try:
+        active_keys = set()
+        for record in alert_records:
+            mmsi = str(record.get("mmsi") or "")
+            for anomaly in record.get("anomalies", []):
+                code = str(anomaly.get("code") or "")
+                if not mmsi or not code:
+                    continue
+                active_keys.add((mmsi, code))
+                existing = connection.execute(
+                    """
+                    SELECT id FROM maritime_alerts
+                    WHERE mmsi = ? AND code = ? AND status = 'active'
+                    """,
+                    (mmsi, code),
+                ).fetchone()
+                if existing:
+                    connection.execute(
+                        """
+                        UPDATE maritime_alerts
+                        SET severity = ?, title = ?, evidence = ?, source = ?,
+                            score = ?, last_seen = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            anomaly["severity"], anomaly["title"],
+                            anomaly["evidence"], anomaly["source"],
+                            anomaly["score"], observed_at, existing["id"],
+                        ),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        INSERT INTO maritime_alerts
+                        (mmsi, code, severity, title, evidence, source, score,
+                         status, first_seen, last_seen)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                        """,
+                        (
+                            mmsi, code, anomaly["severity"], anomaly["title"],
+                            anomaly["evidence"], anomaly["source"], anomaly["score"],
+                            observed_at, observed_at,
+                        ),
+                    )
+        active_rows = connection.execute(
+            "SELECT id, mmsi, code FROM maritime_alerts WHERE status = 'active'"
+        ).fetchall()
+        for row in active_rows:
+            if (row["mmsi"], row["code"]) not in active_keys:
+                connection.execute(
+                    "UPDATE maritime_alerts SET status = 'resolved', last_seen = ? WHERE id = ?",
+                    (observed_at, row["id"]),
+                )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def get_maritime_alerts(status="active", limit=100, severity=None):
+    connection = get_connection()
+    try:
+        clauses = []
+        parameters = []
+        if status != "all":
+            clauses.append("status = ?")
+            parameters.append(status)
+        if severity:
+            clauses.append("severity = ?")
+            parameters.append(severity)
+        where = "WHERE " + " AND ".join(clauses) if clauses else ""
+        parameters.append(limit)
+        rows = connection.execute(
+            f"""
+            SELECT * FROM maritime_alerts
+            {where}
+            ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+                     last_seen DESC
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def acknowledge_maritime_alert(alert_id):
+    connection = get_connection()
+    try:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        cursor = connection.execute(
+            """
+            UPDATE maritime_alerts
+            SET status = 'acknowledged', acknowledged_at = ?
+            WHERE id = ? AND status = 'active'
+            """,
+            (timestamp, alert_id),
+        )
+        connection.commit()
+        return cursor.rowcount == 1
+    finally:
+        connection.close()
 
 
 # ============================================================
@@ -702,6 +845,40 @@ def get_current_vessels(limit=100):
 
 
 # ============================================================
+# GET ONE CURRENT VESSEL
+# ============================================================
+
+def get_vessel(mmsi):
+    connection = get_connection()
+
+    try:
+        row = connection.execute(
+            """
+            SELECT
+                vessels.*,
+                vessel_metadata.imo,
+                vessel_metadata.shipname,
+                vessel_metadata.callsign,
+                vessel_metadata.shiptype,
+                vessel_metadata.destination,
+                vessel_metadata.draught,
+                vessel_metadata.eta,
+                vessel_metadata.length,
+                vessel_metadata.beam,
+                vessel_metadata.last_static_update
+            FROM vessels
+            LEFT JOIN vessel_metadata
+              ON vessel_metadata.mmsi = vessels.mmsi
+            WHERE vessels.mmsi = ?
+            """,
+            (str(mmsi),),
+        ).fetchone()
+        return None if row is None else dict(row)
+    finally:
+        connection.close()
+
+
+# ============================================================
 # GET RECENT MMSIS FOR STATIC AIS SUBSCRIPTIONS
 # ============================================================
 
@@ -862,6 +1039,44 @@ def get_vessel_histories(
     connection.close()
 
 
+    return histories
+
+
+# ============================================================
+# GET AIS TRAINING HISTORIES
+# ============================================================
+
+def get_training_histories(limit=20000):
+    """Load a bounded recent sample for the learned ETA model."""
+    connection = get_connection()
+
+    try:
+        rows = connection.execute(
+            """
+            SELECT mmsi, latitude, longitude, sog, timestamp
+            FROM (
+                SELECT *
+                FROM positions
+                ORDER BY timestamp DESC
+                LIMIT ?
+            )
+            ORDER BY mmsi, timestamp ASC
+            """,
+            (limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    histories = {}
+    for row in rows:
+        histories.setdefault(str(row["mmsi"]), []).append(
+            {
+                "lat": row["latitude"],
+                "lon": row["longitude"],
+                "sog": row["sog"],
+                "timestamp": row["timestamp"],
+            }
+        )
     return histories
 
 

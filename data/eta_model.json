@@ -1,0 +1,23 @@
+{
+  "status": "trained",
+  "model_version": "ridge_eta_v1",
+  "trained_at": "2026-09-23T11:53:59.370864+00:00",
+  "training_rows": 348,
+  "rmse_hours": 0.00067,
+  "coefficients": [
+    0.002211198075881675,
+    0.0519593366499241,
+    0.011472531742651558,
+    -0.00011169392992111266,
+    0.0030907002892455277,
+    0.0033289012835698924
+  ],
+  "feature_names": [
+    "bias",
+    "log_distance_nm",
+    "distance_over_speed",
+    "speed_knots",
+    "hour_sin",
+    "hour_cos"
+  ]
+}

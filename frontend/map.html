@@ -166,8 +166,19 @@
         }
 
 
+        #estimated-route-controls {
+
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 6px;
+            margin-top: 8px;
+
+        }
+
+
         #analysis-panel select,
-        #analysis-panel button {
+        #analysis-panel button,
+        #analysis-panel input {
 
             min-height: 32px;
             box-sizing: border-box;
@@ -184,6 +195,14 @@
 
             flex: 1;
             padding: 0 5px;
+
+        }
+
+
+        #analysis-panel input {
+
+            width: 100%;
+            padding: 0 6px;
 
         }
 
@@ -205,7 +224,8 @@
 
 
         #analysis-summary,
-        #route-analysis {
+        #route-analysis,
+        #estimated-route-status {
 
             display: block;
             margin-top: 8px;
@@ -289,7 +309,43 @@
         </div>
 
         <small id="analysis-summary">Loading traffic analysis...</small>
+        <small id="maritime-summary">Loading maritime analytics...</small>
+        <small id="alert-summary">Loading active alerts...</small>
         <small id="route-analysis">Select a vessel for route analysis.</small>
+
+        <div id="estimated-route-controls">
+
+            <input
+                id="estimated-route-latitude"
+                type="number"
+                min="-90"
+                max="90"
+                step="0.01"
+                placeholder="Destination lat"
+                aria-label="Estimated route destination latitude"
+            >
+
+            <input
+                id="estimated-route-longitude"
+                type="number"
+                min="-180"
+                max="180"
+                step="0.01"
+                placeholder="Destination lon"
+                aria-label="Estimated route destination longitude"
+            >
+
+            <button
+                id="estimated-route-button"
+                type="button"
+                title="Draw estimated voyage route"
+            >
+                Estimate
+            </button>
+
+        </div>
+
+        <small id="estimated-route-status">Select a vessel, enter a destination, and estimate a route.</small>
 
     </section>
 
@@ -329,6 +385,12 @@
 
         const PORT_ANALYSIS_API_URL =
             "/api/v1/analysis/ports";
+
+        const MARITIME_ANALYSIS_API_URL =
+            "/api/v1/analysis/maritime";
+
+        const ALERTS_API_URL =
+            "/api/v1/alerts";
 
 
         // =====================================================
@@ -386,6 +448,8 @@
             );
 
         let trafficHeatLayer = null;
+
+        let estimatedRouteLayer = null;
 
         let heatmapEnabled = false;
 
@@ -660,6 +724,67 @@
         }
 
 
+        async function loadMaritimeAnalysis() {
+
+            const summary = document.getElementById(
+                "maritime-summary"
+            );
+
+            try {
+                const response = await fetch(
+                    `${MARITIME_ANALYSIS_API_URL}?hours=24&limit=100`,
+                    {cache: "no-store"}
+                );
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                const risk = data.risk_bands || {};
+                summary.textContent =
+                    `${data.vessel_count} vessels, `
+                    + `${data.moving_vessel_count} moving, `
+                    + `avg ${data.average_speed_knots ?? "N/A"} kt, `
+                    + `${data.anomaly_count} anomalies, `
+                    + `${risk.critical || 0} critical risk`;
+            }
+            catch (error) {
+                summary.textContent = "Maritime analytics unavailable";
+                console.error("Failed to load maritime analytics:", error);
+            }
+
+        }
+
+
+        async function loadAlertSummary() {
+
+            const summary = document.getElementById(
+                "alert-summary"
+            );
+
+            try {
+                const response = await fetch(
+                    `${ALERTS_API_URL}?status=active&limit=100`,
+                    {cache: "no-store"}
+                );
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                const critical = data.alerts.filter(
+                    alert => alert.severity === "critical"
+                ).length;
+                summary.textContent =
+                    `${data.count} active alerts, ${critical} critical; `
+                    + "acknowledgement available via API";
+            }
+            catch (error) {
+                summary.textContent = "Alert monitoring unavailable";
+                console.error("Failed to load alert feed:", error);
+            }
+
+        }
+
+
         function updateTrafficHeatmap(cells) {
 
             const points = cells.map(
@@ -719,7 +844,8 @@
 
                 const response = await fetch(
                     `${SINGLE_VESSEL_HISTORY_API_URL}/`
-                    + `${encodeURIComponent(mmsi)}/route?limit=100`,
+                    + `${encodeURIComponent(mmsi)}/historical-route-intelligence`
+                    + `?limit=100`,
                     {cache: "no-store"}
                 );
 
@@ -733,12 +859,13 @@
 
                 const data = await response.json();
                 const route = data.route;
-                const speed = route.average_speed_knots;
 
                 summary.textContent =
-                    `${route.segment_count} observed segment(s), `
+                    `${route.route_shape} route, `
+                    + `${route.dominant_direction}bound, `
                     + `${route.distance_nm} nautical miles, `
-                    + `average ${speed ?? "N/A"} knots`;
+                    + `${route.efficiency_percent}% efficient, `
+                    + `${route.turn_count} turn(s)`;
 
             }
 
@@ -751,6 +878,78 @@
                     error
                 );
 
+            }
+
+        }
+
+
+        async function loadEstimatedVoyageRoute(mmsi) {
+
+            const status = document.getElementById(
+                "estimated-route-status"
+            );
+            const latitude = document.getElementById(
+                "estimated-route-latitude"
+            ).value;
+            const longitude = document.getElementById(
+                "estimated-route-longitude"
+            ).value;
+
+            if (!mmsi || latitude === "" || longitude === "") {
+                status.textContent = "Select a vessel and enter both destination coordinates.";
+                return;
+            }
+
+            status.textContent = `Estimating route for ${mmsi}...`;
+
+            try {
+                const query = new URLSearchParams({
+                    destination_latitude: latitude,
+                    destination_longitude: longitude,
+                    waypoints: "20",
+                });
+                const response = await fetch(
+                    `${SINGLE_VESSEL_HISTORY_API_URL}/`
+                    + `${encodeURIComponent(mmsi)}/eta-prediction?${query}`,
+                    {cache: "no-store"}
+                );
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                const prediction = data.prediction;
+                const route = prediction.route;
+                if (estimatedRouteLayer) {
+                    map.removeLayer(estimatedRouteLayer);
+                }
+                estimatedRouteLayer = L.polyline(
+                    route.waypoints.map(
+                        point => [point.latitude, point.longitude]
+                    ),
+                    {
+                        color: "#1565c0",
+                        weight: 3,
+                        opacity: 0.8,
+                        dashArray: "8 8",
+                    }
+                ).addTo(map);
+                if (prediction.status === "unavailable") {
+                    status.textContent = prediction.reason;
+                    return;
+                }
+                status.textContent =
+                    `ETA ${prediction.predicted_eta}, `
+                    + `${prediction.duration_hours}h at `
+                    + `${prediction.speed_knots} kt `
+                    + `(${prediction.speed_source}); `
+                    + `${prediction.prediction_method || "baseline"}; `
+                    + `${prediction.confidence} confidence, `
+                    + `${prediction.schedule_status}; not land-aware.`;
+            }
+            catch (error) {
+                status.textContent = "Estimated route unavailable.";
+                console.error("Failed to estimate voyage route:", error);
             }
 
         }
@@ -912,6 +1111,27 @@
                     <b>ETA:</b>
                     ${displayValue(vessel.eta)}
 
+                    <br>
+
+                    <b>Voyage state:</b>
+                    ${displayValue(
+                        vessel.intelligence?.voyage?.voyage_state
+                    )}
+
+                    <br>
+
+                    <b>Reported ETA (AIS):</b>
+                    ${displayValue(
+                        vessel.intelligence?.voyage?.reported_eta
+                    )}
+
+                    <br>
+
+                    <b>Voyage confidence:</b>
+                    ${displayValue(
+                        vessel.intelligence?.voyage?.confidence
+                    )}
+
                     <br><br>
 
                     <b>Latitude:</b>
@@ -945,6 +1165,107 @@
 
                     <b>Heading:</b>
                     ${heading}°
+
+                    <br><br>
+
+                    <b>Operational state:</b>
+                    ${displayValue(
+                        vessel.intelligence?.operational_state
+                    )}
+
+                    <br>
+
+                    <b>Health:</b>
+                    ${displayValue(
+                        vessel.intelligence?.health?.score
+                    )} / 100
+                    (${displayValue(
+                        vessel.intelligence?.health?.band
+                    )})
+
+                    <br>
+
+                    <b>Risk:</b>
+                    ${displayValue(
+                        vessel.intelligence?.risk_level
+                    )}
+
+                    <br>
+
+                    <b>Identity completeness:</b>
+                    ${displayValue(
+                        vessel.intelligence?.identity?.identity_completeness
+                    )}%
+
+                    <br><br>
+
+                    <b>Historical observations:</b>
+                    ${displayValue(
+                        vessel.intelligence?.historical?.observation_count
+                    )}
+
+                    <br>
+
+                    <b>Observed distance:</b>
+                    ${displayValue(
+                        vessel.intelligence?.historical?.distance_nm
+                    )} nm
+
+                    <br>
+
+                    <b>Historical movement:</b>
+                    ${displayValue(
+                        vessel.intelligence?.historical?.movement_state
+                    )}
+
+                    <br>
+
+                    <b>Speed trend:</b>
+                    ${displayValue(
+                        vessel.intelligence?.historical?.speed_trend
+                    )}
+
+                    <br>
+
+                    <b>Track coverage:</b>
+                    ${displayValue(
+                        vessel.intelligence?.historical?.coverage_score
+                    )} / 100
+
+                    <br>
+
+                    <b>Route shape:</b>
+                    ${displayValue(
+                        vessel.intelligence?.route?.route_shape
+                    )}
+
+                    <br>
+
+                    <b>Route direction:</b>
+                    ${displayValue(
+                        vessel.intelligence?.route?.dominant_direction
+                    )}
+
+                    <br>
+
+                    <b>Route efficiency:</b>
+                    ${displayValue(
+                        vessel.intelligence?.route?.efficiency_percent
+                    )}%
+
+                    <br>
+
+                    <b>Maritime anomaly risk:</b>
+                    ${displayValue(
+                        vessel.intelligence?.anomalies?.risk_band
+                    )}
+
+                    <br>
+
+                    <b>Anomaly score:</b>
+                    ${displayValue(
+                        vessel.intelligence?.anomalies?.anomaly_score
+                    )} / 100
 
                 </div>
             `;
@@ -1474,6 +1795,15 @@
                 mmsi
             );
 
+            if (estimatedRouteLayer) {
+                map.removeLayer(estimatedRouteLayer);
+                estimatedRouteLayer = null;
+                document.getElementById(
+                    "estimated-route-status"
+                ).textContent =
+                    "Select a vessel, enter a destination, and estimate a route.";
+            }
+
         }
 
 
@@ -2001,6 +2331,11 @@
                 "heatmap-toggle"
             );
 
+        const estimatedRouteButton =
+            document.getElementById(
+                "estimated-route-button"
+            );
+
 
         analysisHours.addEventListener(
             "change",
@@ -2052,11 +2387,27 @@
         );
 
 
+        estimatedRouteButton.addEventListener(
+            "click",
+            () => {
+
+                loadEstimatedVoyageRoute(
+                    selectedTrailMmsi
+                );
+
+            }
+        );
+
+
         initializeMapData();
 
         loadTrafficAnalysis();
 
         loadPortAnalysis();
+
+        loadMaritimeAnalysis();
+
+        loadAlertSummary();
 
 
         // =====================================================

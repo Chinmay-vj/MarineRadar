@@ -10,6 +10,7 @@ from database import (
     get_current_vessels,
     get_vessel_histories
 )
+from intelligence import analyze_vessel, build_vessel_profile
 
 
 # ============================================================
@@ -49,6 +50,16 @@ MAX_MAP_VESSELS = 100
 # Number of historical positions used for the trail.
 
 TRAIL_LENGTH = 20
+
+
+# Optional straight-line ETA target. AIS destination names do not contain
+# coordinates, so operators can supply a port or waypoint here.
+with st.sidebar:
+    st.header("Intelligence")
+    eta_enabled = st.checkbox("Calculate route ETA", value=False)
+    eta_latitude = st.number_input("Destination latitude", -90.0, 90.0, 1.0, 0.1, disabled=not eta_enabled)
+    eta_longitude = st.number_input("Destination longitude", -180.0, 180.0, 103.0, 0.1, disabled=not eta_enabled)
+    st.caption("ETA uses great-circle distance and current AIS speed.")
 
 
 # ============================================================
@@ -111,6 +122,42 @@ def live_map():
 
     )
 
+    destination = (
+        {"latitude": eta_latitude, "longitude": eta_longitude}
+        if eta_enabled
+        else None
+    )
+    intelligence = {
+        str(ship["mmsi"]): {
+            "analysis": analyze_vessel(
+                ship,
+                histories.get(str(ship["mmsi"]), []),
+                destination=destination,
+            ),
+            "profile": build_vessel_profile(
+                ship,
+                analyze_vessel(
+                    ship,
+                    histories.get(str(ship["mmsi"]), []),
+                    destination=destination,
+                ),
+                histories.get(str(ship["mmsi"]), []),
+            ),
+        }
+        for ship in ships
+        if ship.get("mmsi")
+    }
+    alert_records = [
+        {
+            "MMSI": analysis["mmsi"],
+            "Severity": alert["severity"].upper(),
+            "Alert": alert["title"],
+            "Details": alert["message"],
+        }
+        for vessel_data in intelligence.values()
+        for alert in vessel_data["analysis"]["alerts"]
+    ]
+
 
     # ========================================================
     # CURRENT UPDATE TIME
@@ -127,7 +174,7 @@ def live_map():
     # STATISTICS
     # ========================================================
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
 
     with col1:
@@ -152,6 +199,18 @@ def live_map():
             "💾 Data source",
             "SQLite"
         )
+
+    with col4:
+        st.metric(
+            "⚠️ Active alerts",
+            len(alert_records)
+        )
+
+    with col5:
+        critical_count = sum(
+            1 for item in alert_records if item["Severity"] == "CRITICAL"
+        )
+        st.metric("🔴 Critical", critical_count)
 
 
     st.caption(
@@ -247,24 +306,20 @@ def live_map():
 
         # ----------------------------------------------------
         # STATIC INFORMATION
-        #
-        # Not yet available in the current position database.
-        # We deliberately don't invent these values.
         # ----------------------------------------------------
 
-        name = "Unknown vessel"
+        name = ship.get("shipname") or "Unknown vessel"
+        vessel_type = ship.get("shiptype") or "Not available"
+        imo = ship.get("imo") or "Not available"
+        destination = ship.get("destination") or "Not available"
 
-        vessel_type = (
-            "Not available"
-        )
-
-        imo = (
-            "Not available"
-        )
-
-        destination = (
-            "Not available"
-        )
+        vessel_intelligence = intelligence.get(mmsi, {})
+        analysis = vessel_intelligence.get("analysis", {})
+        profile = vessel_intelligence.get("profile", {})
+        alert_count = analysis.get("alert_count", 0)
+        health = profile.get("health", {})
+        voyage = profile.get("voyage", {})
+        anomalies = profile.get("anomalies", {})
 
 
         # ====================================================
@@ -458,6 +513,28 @@ def live_map():
                 else "N/A"
             }°
 
+            <br><br>
+            <b>⚠️ Intelligence alerts:</b> {alert_count}
+
+            <br>
+            <b>State:</b> {profile.get("operational_state", "unknown")}<br>
+            <b>Health:</b> {health.get("score", "N/A")} / 100
+            ({health.get("band", "unknown")})<br>
+            <b>Risk:</b> {profile.get("risk_level", "normal")}<br>
+            <b>Identity completeness:</b>
+            {profile.get("identity", {}).get("identity_completeness", 0)}%
+
+            <br><br>
+            <b>Voyage state:</b> {voyage.get("voyage_state", "unknown")}<br>
+            <b>Reported ETA:</b> {voyage.get("reported_eta", "N/A")}<br>
+            <b>Voyage confidence:</b> {voyage.get("confidence", "low")}
+
+            <br>
+            <b>Maritime anomaly risk:</b>
+            {anomalies.get("risk_band", "normal")}<br>
+            <b>Anomaly score:</b>
+            {anomalies.get("anomaly_score", 0)} / 100
+
         </div>
         """
 
@@ -507,6 +584,32 @@ def live_map():
         height=700
 
     )
+
+    st.subheader("Intelligence feed")
+    if alert_records:
+        st.dataframe(
+            alert_records,
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.success("No active vessel anomalies detected in the displayed fleet.")
+
+    eta_records = []
+    for ship in ships:
+        vessel_data = intelligence.get(str(ship.get("mmsi")), {})
+        prediction = vessel_data.get("analysis", {}).get("eta_prediction")
+        if prediction:
+            eta_records.append({
+                "MMSI": ship["mmsi"],
+                "Destination": f"{eta_latitude:.2f}, {eta_longitude:.2f}",
+                "Distance (nm)": prediction["distance_nm"],
+                "ETA": prediction["eta"],
+                "Confidence": vessel_data["analysis"]["eta_confidence"].upper(),
+            })
+    if eta_records:
+        st.subheader("Predicted arrivals")
+        st.dataframe(eta_records, use_container_width=True, hide_index=True)
 
 
 # ============================================================
